@@ -57,12 +57,15 @@ enum HostPlan {
 }
 
 model Session {
+  // Lucia v3 prisma adapter sends the FK as `userId` (hard-coded in
+  // setSession). The relation field name (`host`) is ours and doesn't matter
+  // to the adapter — only the scalar name does.
   id        String   @id
-  hostId    String
+  userId    String
   expiresAt DateTime
-  host      Host     @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  host      Host     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([hostId])
+  @@index([userId])
 }
 
 // ─────────── Property ───────────

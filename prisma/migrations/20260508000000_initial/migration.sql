@@ -48,7 +48,7 @@ CREATE TABLE "Host" (
 -- CreateTable
 CREATE TABLE "Session" (
     "id" TEXT NOT NULL,
-    "hostId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
     "expiresAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Session_pkey" PRIMARY KEY ("id")
@@ -214,7 +214,7 @@ CREATE UNIQUE INDEX "Host_stripeCustomerId_key" ON "Host"("stripeCustomerId");
 CREATE UNIQUE INDEX "Host_stripeSubscriptionId_key" ON "Host"("stripeSubscriptionId");
 
 -- CreateIndex
-CREATE INDEX "Session_hostId_idx" ON "Session"("hostId");
+CREATE INDEX "Session_userId_idx" ON "Session"("userId");
 
 -- CreateIndex
 CREATE INDEX "Property_hostId_idx" ON "Property"("hostId");
@@ -256,7 +256,7 @@ CREATE INDEX "AuditLog_guestId_idx" ON "AuditLog"("guestId");
 CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
 
 -- AddForeignKey
-ALTER TABLE "Session" ADD CONSTRAINT "Session_hostId_fkey" FOREIGN KEY ("hostId") REFERENCES "Host"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Session" ADD CONSTRAINT "Session_userId_fkey" FOREIGN KEY ("userId") REFERENCES "Host"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Property" ADD CONSTRAINT "Property_hostId_fkey" FOREIGN KEY ("hostId") REFERENCES "Host"("id") ON DELETE CASCADE ON UPDATE CASCADE;
