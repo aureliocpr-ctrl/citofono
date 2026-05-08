@@ -77,7 +77,7 @@ Pick the one that fits the budget:
 
 | Provider | Default model | Costo/M token (in/out) | Note |
 |---|---|---|---|
-| `anthropic` | claude-haiku-4-5 | $0.25 / $1.25 | Default, multilingua eccellente |
+| `anthropic` | claude-sonnet-4-6 | $3 / $15 | Default, qualità top per concierge |
 | `openai` | gpt-5-nano | ~$0.05 / $0.40 | Veloce, qualità solida |
 | `google` | gemini-2.5-flash | $0.075 / $0.30 | Cheapest, ottimo italiano |
 | `xai` | grok-4-fast | ~$0.20 / $0.50 | Tono più diretto |
@@ -87,9 +87,11 @@ Pick the one that fits the budget:
 
 ### Provider per provider
 
-**Anthropic** (default):
+**Anthropic** (default — Sonnet 4.6):
 1. [console.anthropic.com](https://console.anthropic.com) → API Keys → Create.
-2. `ANTHROPIC_API_KEY=sk-ant-...`. Budget $20/mese (~$0.50/host attivo).
+2. `ANTHROPIC_API_KEY=sk-ant-...`. Budget $50/mese (~$1.50-3/host attivo
+   con Sonnet). Per ridurre i costi 12x con perdita di qualità minima:
+   `CITOFONO_AI_MODEL=claude-haiku-4-5`.
 
 **OpenAI**:
 1. [platform.openai.com](https://platform.openai.com) → API keys.

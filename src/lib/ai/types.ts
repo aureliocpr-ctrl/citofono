@@ -59,11 +59,11 @@ export type AIProviderName =
  * Aggiornato: 2026-05.
  */
 export const DEFAULT_MODELS: Record<AIProviderName, string> = {
-  anthropic: 'claude-haiku-4-5-20251001',
+  anthropic: 'claude-sonnet-4-6',
   openai: 'gpt-5-nano',
   google: 'gemini-2.5-flash',
   xai: 'grok-4-fast',
   groq: 'llama-3.3-70b-versatile',
   ollama: 'llama3.3',
-  openrouter: 'anthropic/claude-haiku-4.5',
+  openrouter: 'anthropic/claude-sonnet-4.6',
 };
