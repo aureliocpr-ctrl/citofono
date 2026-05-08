@@ -37,7 +37,7 @@ export default async function BookingsPage() {
             </thead>
             <tbody className="divide-y divide-ink/10">
               {bookings.map((b) => (
-                <tr key={b.id}>
+                <tr key={b.id} className={b.status === 'CANCELLED' ? 'opacity-60' : ''}>
                   <td className="px-4 py-3 font-medium">{b.property.name}</td>
                   <td className="px-4 py-3">
                     <div>{b.leadName}</div>
@@ -45,7 +45,11 @@ export default async function BookingsPage() {
                   </td>
                   <td className="px-4 py-3">{fmtRange(b.checkInDate, b.checkOutDate)}</td>
                   <td className="px-4 py-3">
-                    <CheckInBadge status={b.checkIn?.status ?? 'PENDING'} />
+                    {b.status === 'CANCELLED' ? (
+                      <span className="inline-block rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800">annullata</span>
+                    ) : (
+                      <CheckInBadge status={b.checkIn?.status ?? 'PENDING'} />
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link href={`/bookings/${b.id}`} className="text-sm font-medium underline">Apri</Link>
