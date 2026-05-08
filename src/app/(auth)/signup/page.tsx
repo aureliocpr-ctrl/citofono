@@ -31,20 +31,32 @@ async function signupAction(formData: FormData) {
   if (!acceptTerms) {
     redirect('/signup?error=terms');
   }
+  // Check duplicate via findUnique, ma fra check e create c'è una race
+  // window: due signup contemporanei della stessa email arrivano entrambi
+  // qui senza esistente. Catturiamo P2002 (unique violation Prisma) per
+  // chiudere la finestra.
   const existing = await prisma.host.findUnique({ where: { email } });
   if (existing) {
     redirect('/signup?error=duplicate');
   }
   const hashedPassword = await hashPassword(password);
-  const host = await prisma.host.create({
-    data: {
-      email,
-      hashedPassword,
-      fullName,
-      acceptedTermsAt: new Date(),
-      acceptedDpiaAt: new Date(),
-    },
-  });
+  let host;
+  try {
+    host = await prisma.host.create({
+      data: {
+        email,
+        hashedPassword,
+        fullName,
+        acceptedTermsAt: new Date(),
+        acceptedDpiaAt: new Date(),
+      },
+    });
+  } catch (err) {
+    if (err instanceof Error && /Unique constraint|P2002/.test(err.message)) {
+      redirect('/signup?error=duplicate');
+    }
+    throw err;
+  }
   const session = await lucia.createSession(host.id, {});
   const cookie = lucia.createSessionCookie(session.id);
   const cookieStore = await cookies();

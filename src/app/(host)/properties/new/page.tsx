@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { z } from 'zod';
 import { validateRequest } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { PLAN_LIMITS } from '@/lib/stripe/client';
 
 const PropertySchema = z.object({
   name: z.string().min(2).max(120),
@@ -26,6 +27,20 @@ async function createPropertyAction(formData: FormData) {
   'use server';
   const { user } = await validateRequest();
   if (!user) redirect('/login');
+
+  // Enforce plan limit prima di creare la property.
+  const host = await prisma.host.findUnique({
+    where: { id: user.id },
+    select: { plan: true },
+  });
+  if (!host) redirect('/login');
+  const limit = PLAN_LIMITS[host.plan].maxProperties;
+  const existingCount = await prisma.property.count({
+    where: { hostId: user.id, archivedAt: null },
+  });
+  if (existingCount >= limit) {
+    redirect('/properties/new?error=plan_limit');
+  }
 
   const raw = Object.fromEntries(formData);
   const parsed = PropertySchema.safeParse(raw);
@@ -69,7 +84,11 @@ export default async function NewPropertyPage(props: {
   searchParams: Promise<{ error?: string }>;
 }) {
   const sp = await props.searchParams;
-  const errorMessage = sp.error === 'invalid' ? 'Controlla i campi obbligatori (nome, indirizzo, città, provincia, CAP).' : null;
+  const errorMessages: Record<string, string> = {
+    invalid: 'Controlla i campi obbligatori (nome, indirizzo, città, provincia, CAP).',
+    plan_limit: 'Hai raggiunto il limite di appartamenti del tuo piano. Aggiorna il piano per aggiungerne altri.',
+  };
+  const errorMessage = sp.error ? errorMessages[sp.error] ?? null : null;
   return (
     <div className="space-y-6">
       <div>
