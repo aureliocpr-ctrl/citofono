@@ -1,0 +1,19 @@
+.guest-step {
+  @apply mx-auto max-w-md px-5 pb-12 pt-8;
+}
+
+.guest-card {
+  @apply rounded-xl border border-white/10 bg-white/5 p-5 backdrop-blur;
+}
+
+.guest-input {
+  @apply block w-full rounded-md border border-white/15 bg-ink-soft px-3 py-2 text-base text-white placeholder:text-white/30 focus:border-post focus:outline-none focus:ring-1 focus:ring-post;
+}
+
+.guest-btn {
+  @apply inline-flex w-full items-center justify-center rounded-md bg-post px-4 py-3 text-base font-semibold text-ink transition-colors hover:bg-post-dark disabled:opacity-50;
+}
+
+.guest-btn-secondary {
+  @apply inline-flex w-full items-center justify-center rounded-md border border-white/20 bg-transparent px-4 py-3 text-base font-medium text-white hover:bg-white/5;
+}

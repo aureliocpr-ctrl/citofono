@@ -1,0 +1,296 @@
+// Citofono — schema database.
+//
+// Modello a 7 entità: Host (utente proprietario), Property (appartamento),
+// Booking (soggiorno), Guest (ospite), CheckIn (processo di verifica),
+// Document (documento d'identità caricato), FaceEmbedding (vettore biometrico
+// derivato — temporaneo, GDPR Art. 9). KnowledgeChunk per il concierge.
+//
+// Privacy by design:
+//   - le immagini grezze del documento e del selfie NON sono in DB;
+//     stanno su storage S3 con TTL 24h e si cancellano dopo verifica.
+//   - FaceEmbedding contiene SOLO il vettore numerico 128-dim, mai foto.
+//   - Tutto è collegato a Booking: alla scadenza prenotazione + N giorni,
+//     un job di pulizia rimuove embedding e documenti.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────── Auth ───────────
+
+model Host {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  hashedPassword  String
+  fullName        String
+  phone           String?
+  vatNumber       String?  // partita IVA opzionale
+  taxCode         String?  // codice fiscale
+  // Stripe
+  stripeCustomerId    String?  @unique
+  stripeSubscriptionId String? @unique
+  plan            HostPlan @default(FREE)
+  planRenewsAt    DateTime?
+  // Alloggiati Web — credenziali host (cifrate at rest in produzione)
+  alloggiatiUser    String?
+  alloggiatiHashed  String?  // hash credenziali, mai in plain text
+  // GDPR
+  acceptedTermsAt DateTime?
+  acceptedDpiaAt  DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sessions    Session[]
+  properties  Property[]
+}
+
+enum HostPlan {
+  FREE       // 3 check-in/mese
+  HOST       // 19€/mese, 1 unità
+  HOST_PLUS  // 49€/mese, fino a 5 unità
+  PRO        // 9€/unità, sopra 5 unità (sales touch)
+}
+
+model Session {
+  id        String   @id
+  hostId    String
+  expiresAt DateTime
+  host      Host     @relation(fields: [hostId], references: [id], onDelete: Cascade)
+
+  @@index([hostId])
+}
+
+// ─────────── Property ───────────
+
+model Property {
+  id          String   @id @default(cuid())
+  hostId      String
+  name        String   // "Casa al mare Sperlonga"
+  address     String
+  city        String
+  province    String   // sigla 2 lettere
+  postalCode  String
+  country     String   @default("IT")
+  cin         String?  // Codice Identificativo Nazionale
+  alloggiatiCode String? // codice struttura per Alloggiati Web (5-7 cifre)
+  // Schede info (knowledge base concierge)
+  checkInTime  String  @default("15:00")
+  checkOutTime String  @default("10:00")
+  wifiName     String?
+  wifiPassword String?
+  // Note libere → indicizzate per concierge
+  guideMarkdown String?  @db.Text
+  // Soft-delete
+  archivedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  host             Host              @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  bookings         Booking[]
+  knowledgeChunks  KnowledgeChunk[]
+
+  @@index([hostId])
+}
+
+// ─────────── Booking ───────────
+
+model Booking {
+  id          String   @id @default(cuid())
+  propertyId  String
+  externalRef String?  // codice Airbnb / Booking.com
+  source      BookingSource @default(MANUAL)
+  checkInDate DateTime
+  checkOutDate DateTime
+  numGuests   Int
+  totalPrice  Decimal? @db.Decimal(10, 2)
+  currency    String   @default("EUR")
+  // Lead guest contact (chi ha prenotato)
+  leadName    String
+  leadEmail   String?
+  leadPhone   String?
+  status      BookingStatus @default(UPCOMING)
+  // Token pubblico per check-in senza login
+  checkInToken     String  @unique @default(cuid())
+  checkInTokenExp  DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  guests      Guest[]
+  checkIn     CheckIn?
+
+  @@index([propertyId])
+  @@index([checkInToken])
+}
+
+enum BookingSource {
+  MANUAL
+  AIRBNB
+  BOOKING
+  VRBO
+  DIRECT
+}
+
+enum BookingStatus {
+  UPCOMING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ─────────── Guest + CheckIn + Document ───────────
+
+model Guest {
+  id          String   @id @default(cuid())
+  bookingId   String
+  // Dati anagrafici (estratti da OCR o inseriti)
+  firstName   String?
+  lastName    String?
+  birthDate   DateTime?
+  birthPlace  String?
+  birthCountry String?  // codice ISO 3 lettere (ITA, DEU)
+  nationality String?   // ISO 3
+  sex         GuestSex?
+  // Documento
+  docType     DocumentType?
+  docNumber   String?
+  docIssuingCountry String?
+  docIssuedAt DateTime?
+  docExpiresAt DateTime?
+  // Status verifica
+  verified        Boolean   @default(false)
+  verifiedAt      DateTime?
+  matchScore      Float?    // cosine similarity 0..1
+  livenessPassed  Boolean   @default(false)
+  flaggedForReview Boolean  @default(false)
+  reviewReason    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  booking     Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  documents   Document[]
+  embedding   FaceEmbedding?
+
+  @@index([bookingId])
+}
+
+enum GuestSex {
+  M
+  F
+  X
+}
+
+enum DocumentType {
+  PASSPORT
+  ID_CARD       // CIE / CdI italiana
+  DRIVING_LICENSE
+  RESIDENCE_PERMIT
+  OTHER
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  guestId     String
+  s3Key       String   // chiave su storage; immagine eliminata dopo TTL
+  side        DocumentSide @default(FRONT)
+  ocrText     String?  @db.Text
+  mrzRaw      String?  // raw MRZ se disponibile
+  parsedJson  Json?    // dati estratti
+  uploadedAt  DateTime @default(now())
+  deletedAt   DateTime? // marcato quando lo storage è stato pulito
+
+  guest       Guest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@index([guestId])
+}
+
+enum DocumentSide {
+  FRONT
+  BACK
+}
+
+// FaceEmbedding — solo il vettore biometrico, mai immagini.
+// Cancellato dopo la fine del soggiorno + 7 giorni di tolleranza.
+model FaceEmbedding {
+  id          String   @id @default(cuid())
+  guestId     String   @unique
+  // Embedding 128-dim. Salvato come bytes per compattezza.
+  // (4 byte float × 128 = 512 byte, totalmente non reversibile a immagine)
+  embedding   Bytes
+  source      EmbeddingSource @default(SELFIE)
+  createdAt   DateTime @default(now())
+  scheduledDeleteAt DateTime  // quando va cancellato
+
+  guest       Guest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledDeleteAt])
+}
+
+enum EmbeddingSource {
+  SELFIE
+  DOCUMENT_PHOTO
+}
+
+// ─────────── CheckIn (processo di verifica) ───────────
+
+model CheckIn {
+  id          String   @id @default(cuid())
+  bookingId   String   @unique
+  status      CheckInStatus @default(PENDING)
+  startedAt   DateTime?
+  completedAt DateTime?
+  alloggiatiCsv     String?  @db.Text  // CSV pronto per il portale
+  alloggiatiSubmitted Boolean @default(false)
+  alloggiatiSubmittedAt DateTime?
+  taxAmount   Decimal? @db.Decimal(8, 2) // imposta soggiorno calcolata
+  notes       String?  @db.Text
+
+  booking     Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+enum CheckInStatus {
+  PENDING
+  IN_PROGRESS
+  AWAITING_REVIEW
+  COMPLETED
+  REJECTED
+}
+
+// ─────────── Concierge knowledge ───────────
+
+model KnowledgeChunk {
+  id          String   @id @default(cuid())
+  propertyId  String
+  topic       String   // "wifi", "checkin", "transport", "rules", "appliances"
+  content     String   @db.Text
+  language    String   @default("it")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+}
+
+// ─────────── Audit log (compliance) ───────────
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  hostId      String?
+  guestId     String?
+  bookingId   String?
+  event       String   // "ocr.success", "facematch.success", "alloggiati.exported", ...
+  details     Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([hostId])
+  @@index([guestId])
+  @@index([createdAt])
+}
