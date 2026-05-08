@@ -5,6 +5,7 @@ import { cookies, headers } from 'next/headers';
 import { lucia, verifyPassword, dummyHash } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { audit, ipAndUaFromHeaders } from '@/lib/audit';
+import { enforceForAction, RL } from '@/lib/rateLimit';
 
 const LoginSchema = z.object({
   email: z.string().email().toLowerCase(),
@@ -13,6 +14,11 @@ const LoginSchema = z.object({
 
 async function loginAction(formData: FormData) {
   'use server';
+  const reqHeaders = await headers();
+  const rl = enforceForAction(reqHeaders, 'login', RL.AUTH);
+  if (!rl.allowed) {
+    redirect(`/login?error=ratelimit&retry=${rl.retryAfterSec}`);
+  }
   const parsed = LoginSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     redirect('/login?error=invalid');
@@ -32,7 +38,6 @@ async function loginAction(formData: FormData) {
   const cookieStore = await cookies();
   cookieStore.set(cookie.name, cookie.value, cookie.attributes);
 
-  const reqHeaders = await headers();
   await audit({ event: 'host.login', hostId: host.id, ...ipAndUaFromHeaders(reqHeaders) });
   redirect('/dashboard');
 }
@@ -40,11 +45,17 @@ async function loginAction(formData: FormData) {
 const errorMessages: Record<string, string> = {
   invalid: 'Email o password non valide.',
   credentials: 'Credenziali errate.',
+  ratelimit: 'Troppi tentativi. Riprova tra qualche minuto.',
 };
 
-export default async function LoginPage(props: { searchParams: Promise<{ error?: string }> }) {
+export default async function LoginPage(props: {
+  searchParams: Promise<{ error?: string; retry?: string }>;
+}) {
   const sp = await props.searchParams;
-  const errorMessage = sp.error ? errorMessages[sp.error] ?? 'Errore.' : null;
+  let errorMessage = sp.error ? errorMessages[sp.error] ?? 'Errore.' : null;
+  if (sp.error === 'ratelimit' && sp.retry) {
+    errorMessage = `Troppi tentativi. Riprova tra ${sp.retry} secondi.`;
+  }
 
   return (
     <main className="min-h-screen bg-post/10">

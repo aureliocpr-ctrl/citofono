@@ -5,6 +5,7 @@ import { lucia, hashPassword } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { audit, ipAndUaFromHeaders } from '@/lib/audit';
 import { cookies, headers } from 'next/headers';
+import { enforceForAction, RL } from '@/lib/rateLimit';
 
 const SignupSchema = z.object({
   fullName: z.string().min(2).max(80),
@@ -15,6 +16,12 @@ const SignupSchema = z.object({
 
 async function signupAction(formData: FormData) {
   'use server';
+
+  const reqHeaders = await headers();
+  const rl = enforceForAction(reqHeaders, 'signup', RL.AUTH);
+  if (!rl.allowed) {
+    redirect(`/signup?error=ratelimit&retry=${rl.retryAfterSec}`);
+  }
 
   const parsed = SignupSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
@@ -43,7 +50,6 @@ async function signupAction(formData: FormData) {
   const cookieStore = await cookies();
   cookieStore.set(cookie.name, cookie.value, cookie.attributes);
 
-  const reqHeaders = await headers();
   await audit({
     event: 'host.signup',
     hostId: host.id,
@@ -57,11 +63,17 @@ const errorMessages: Record<string, string> = {
   invalid: 'Controlla i dati inseriti.',
   terms: 'Devi accettare i termini per continuare.',
   duplicate: 'Esiste già un account con questa email.',
+  ratelimit: 'Troppi tentativi. Riprova tra qualche minuto.',
 };
 
-export default async function SignupPage(props: { searchParams: Promise<{ error?: string }> }) {
+export default async function SignupPage(props: {
+  searchParams: Promise<{ error?: string; retry?: string }>;
+}) {
   const sp = await props.searchParams;
-  const errorMessage = sp.error ? errorMessages[sp.error] ?? 'Errore.' : null;
+  let errorMessage = sp.error ? errorMessages[sp.error] ?? 'Errore.' : null;
+  if (sp.error === 'ratelimit' && sp.retry) {
+    errorMessage = `Troppi tentativi. Riprova tra ${sp.retry} secondi.`;
+  }
 
   return (
     <main className="min-h-screen bg-post/10">

@@ -25,6 +25,7 @@ import { loadGuestSession } from '@/lib/guestSession';
 import { matchEmbeddings, encodeEmbedding } from '@/lib/face/match';
 import { audit, ipAndUaFromHeaders } from '@/lib/audit';
 import { sendHostGuestVerified, sendHostCheckInReview } from '@/lib/email';
+import { enforce, RL } from '@/lib/rateLimit';
 
 const Schema = z.object({
   guestId: z.string().min(1),
@@ -36,6 +37,8 @@ const Schema = z.object({
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
+  const limited = enforce(req, `guest-verify:${token}`, RL.GUEST_GENERIC);
+  if (limited) return limited;
   const sess = await loadGuestSession(token);
   if (!sess) return NextResponse.json({ error: 'invalid_or_expired_token' }, { status: 404 });
 

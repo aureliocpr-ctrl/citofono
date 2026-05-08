@@ -4,6 +4,32 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-05-08
+
+Production-ready hardening. Adesso il prodotto è deployabile a host paganti senza fragilità di sicurezza, GDPR o flussi mancanti.
+
+### Added
+- **Security headers** in `next.config.mjs`: CSP, HSTS, X-Frame-Options DENY, Referrer-Policy, Permissions-Policy, X-Content-Type-Options. CSP permette `https://js.stripe.com`, `https://cdn.jsdelivr.net` (face-api models), `https://api.anthropic.com`.
+- **Rate limiting in-memory** (`src/lib/rateLimit.ts`): bucket token, profili AUTH/GUEST/CONCIERGE/WEBHOOK. Applicato a login (5/5min), signup (5/5min), guest endpoints document+verify (30/min per token), cambio password (5/5min), cancellazione account (5/5min). API pulita per swappare con Upstash Redis quando si va multi-istanza.
+- **Health check** `/api/health` con stato DB + latency + version, 200/503 per uptime monitoring.
+- **Edit Property + archivio**: form completo (nome, indirizzo, CIN, Alloggiati, check-in/out, WiFi, iCal URLs, override imposta soggiorno) e zona pericolosa con conferma `ARCHIVIA`. Soft-archive: dati storici restano per GDPR/fiscale.
+- **Cancel Booking**: conferma esplicita `ANNULLA`, marca booking come CANCELLED, blocca generazione schedina.
+- **Reset CheckIn**: se il face match è andato male, l'host può azzerare verifiche e FaceEmbedding di tutti gli ospiti per rifare il flusso con lo stesso link.
+- **Settings host** (`/settings`): cambio password (con verifica password corrente), credenziali Alloggiati Web, link a export GDPR e cancellazione account.
+- **DSAR export GDPR Art. 20** (`/api/host/me/export`): dump JSON completo (host, properties, bookings, guests anonimizzati, audit log). NON include FaceEmbedding (quei dati sono dell'ospite, non dell'host).
+- **Cancellazione account GDPR Art. 17** (`/settings/delete-account`): conferma con frase esatta + password corrente. Cancella sub Stripe, file S3, dati DB in cascade. Anonimizza audit log (hostId → null) per preservare conformità.
+- **Logger strutturato JSON** (`src/lib/logger.ts`): redaction automatica di chiavi sensibili (password, token, embedding, docNumber, birthDate). Sentry-ready (hook `SENTRY_DSN`).
+- **DEPLOY.md**: guida completa Vercel + Neon + R2 + Stripe + Resend + Anthropic. Smoke test post-deploy, costi mensili stimati, troubleshooting.
+- **`vercel-build` script**: `prisma migrate deploy && next build` per auto-migrazione al primo deploy.
+- **Link "Impostazioni"** nella nav host.
+
+### Fixed
+- **Audit event types**: aggiunto `host.password_changed`, `host.alloggiati_updated`, `host.gdpr_export`, `host.account_deleted`, `property.updated`, `property.archived`, `booking.cancelled`, `checkin.reset` al union TypeScript.
+- **`Property.icalUrls = null`**: usato `Prisma.DbNull` invece di `null` per il tipo Json nullable.
+
+### Changed
+- `package.json` versione → `0.4.0`.
+
 ## [0.3.0] - 2026-05-08
 
 Fix delle 14 fragilità identificate nell'audit interno onesto. Adesso il flusso vero è eseguibile end-to-end.

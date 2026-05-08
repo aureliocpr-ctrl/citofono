@@ -1,6 +1,6 @@
 {
   "name": "citofono",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Il citofono digitale per il tuo affitto breve. Check-in de visu legale, concierge AI multilingua, Alloggiati Web automatico.",
   "type": "module",
@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "prisma migrate deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

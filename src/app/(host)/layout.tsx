@@ -33,6 +33,7 @@ export default async function HostLayout({ children }: { children: React.ReactNo
             <Link href="/properties" className="text-ink/70 hover:text-ink">Appartamenti</Link>
             <Link href="/bookings" className="text-ink/70 hover:text-ink">Prenotazioni</Link>
             <Link href="/billing" className="text-ink/70 hover:text-ink">Abbonamento</Link>
+            <Link href="/settings" className="text-ink/70 hover:text-ink">Impostazioni</Link>
           </nav>
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-ink/60 md:inline">{user.email}</span>

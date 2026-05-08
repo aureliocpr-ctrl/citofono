@@ -19,12 +19,15 @@ import { putObject, documentKey } from '@/lib/storage';
 import { extractFromOcrText } from '@/lib/ocr/extract';
 import { audit, ipAndUaFromHeaders } from '@/lib/audit';
 import type { DocumentSide } from '@prisma/client';
+import { enforce, RL } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
+  const limited = enforce(req, `guest-doc:${token}`, RL.GUEST_GENERIC);
+  if (limited) return limited;
   const sess = await loadGuestSession(token);
   if (!sess) return NextResponse.json({ error: 'invalid_or_expired_token' }, { status: 404 });
 
