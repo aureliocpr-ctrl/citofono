@@ -31,6 +31,17 @@ function Header() {
         <div className="flex items-center gap-2">
           <Link href="/login" className="hidden text-sm text-ink/70 hover:text-ink md:inline">Accedi</Link>
           <Link href="/signup" className="citofono-btn-primary">Prova gratis</Link>
+          <details className="relative md:hidden">
+            <summary className="list-none cursor-pointer rounded-md border border-ink/20 px-3 py-1.5 text-sm">
+              Menu
+            </summary>
+            <div className="absolute right-0 top-10 z-10 w-56 rounded-md border border-ink/10 bg-white p-2 shadow-lg">
+              <a href="#come-funziona" className="block rounded px-3 py-2 text-sm hover:bg-post/10">Come funziona</a>
+              <a href="#prezzi" className="block rounded px-3 py-2 text-sm hover:bg-post/10">Prezzi</a>
+              <a href="#faq" className="block rounded px-3 py-2 text-sm hover:bg-post/10">FAQ</a>
+              <Link href="/login" className="block rounded px-3 py-2 text-sm hover:bg-post/10">Accedi</Link>
+            </div>
+          </details>
         </div>
       </nav>
     </header>

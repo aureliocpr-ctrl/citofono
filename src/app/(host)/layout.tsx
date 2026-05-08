@@ -37,9 +37,29 @@ export default async function HostLayout({ children }: { children: React.ReactNo
           </nav>
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-ink/60 md:inline">{user.email}</span>
-            <form action={logoutAction}>
+            <form action={logoutAction} className="hidden md:inline">
               <button type="submit" className="text-sm text-ink/70 hover:text-ink">Esci</button>
             </form>
+            {/* Mobile menu — details/summary, niente JS */}
+            <details className="relative md:hidden">
+              <summary className="list-none cursor-pointer rounded-md border border-ink/20 px-3 py-1.5 text-sm">
+                Menu
+              </summary>
+              <div className="absolute right-0 top-10 z-10 w-56 rounded-md border border-ink/10 bg-white p-2 shadow-lg">
+                <Link href="/dashboard" className="block rounded px-3 py-2 text-sm hover:bg-post/10">Dashboard</Link>
+                <Link href="/properties" className="block rounded px-3 py-2 text-sm hover:bg-post/10">Appartamenti</Link>
+                <Link href="/bookings" className="block rounded px-3 py-2 text-sm hover:bg-post/10">Prenotazioni</Link>
+                <Link href="/billing" className="block rounded px-3 py-2 text-sm hover:bg-post/10">Abbonamento</Link>
+                <Link href="/settings" className="block rounded px-3 py-2 text-sm hover:bg-post/10">Impostazioni</Link>
+                <div className="my-1 border-t border-ink/10"></div>
+                <div className="px-3 py-1 text-xs text-ink/50">{user.email}</div>
+                <form action={logoutAction}>
+                  <button type="submit" className="w-full rounded px-3 py-2 text-left text-sm hover:bg-post/10">
+                    Esci
+                  </button>
+                </form>
+              </div>
+            </details>
           </div>
         </div>
       </header>
