@@ -64,11 +64,65 @@ R2 è più economico di S3 e ha lifecycle TTL nativi.
 
 ---
 
-## 5 · Anthropic (concierge AI)
+## 5 · Provider AI (concierge)
 
+Citofono supporta **7 provider AI** intercambiabili tramite due env var:
+
+```
+CITOFONO_AI_PROVIDER=<provider>
+CITOFONO_AI_MODEL=<modello>     # opzionale, ognuno ha un default
+```
+
+Pick the one that fits the budget:
+
+| Provider | Default model | Costo/M token (in/out) | Note |
+|---|---|---|---|
+| `anthropic` | claude-haiku-4-5 | $0.25 / $1.25 | Default, multilingua eccellente |
+| `openai` | gpt-5-nano | ~$0.05 / $0.40 | Veloce, qualità solida |
+| `google` | gemini-2.5-flash | $0.075 / $0.30 | Cheapest, ottimo italiano |
+| `xai` | grok-4-fast | ~$0.20 / $0.50 | Tono più diretto |
+| `groq` | llama-3.3-70b-versatile | $0.59 / $0.79 | Inferenza ultraveloce |
+| `openrouter` | claude-haiku-4.5 | varia | Router universale |
+| `ollama` | llama3.3 | **€0** (self-host) | Privacy by design |
+
+### Provider per provider
+
+**Anthropic** (default):
 1. [console.anthropic.com](https://console.anthropic.com) → API Keys → Create.
-2. Annota `sk-ant-...`. Imposta un budget mensile a $20 — i costi reali
-   per host attivo sono ~$0.50/mese.
+2. `ANTHROPIC_API_KEY=sk-ant-...`. Budget $20/mese (~$0.50/host attivo).
+
+**OpenAI**:
+1. [platform.openai.com](https://platform.openai.com) → API keys.
+2. `OPENAI_API_KEY=sk-...` + `CITOFONO_AI_PROVIDER=openai`.
+
+**xAI Grok**:
+1. [console.x.ai](https://console.x.ai) → API keys.
+2. `XAI_API_KEY=xai-...` + `CITOFONO_AI_PROVIDER=xai`.
+
+**Google Gemini**:
+1. [aistudio.google.com](https://aistudio.google.com) → Get API key.
+2. `GOOGLE_API_KEY=...` + `CITOFONO_AI_PROVIDER=google`.
+
+**Groq** (Llama gratis, fast):
+1. [console.groq.com](https://console.groq.com) → API keys.
+2. `GROQ_API_KEY=gsk_...` + `CITOFONO_AI_PROVIDER=groq`.
+
+**OpenRouter** (un'API per ~150 modelli):
+1. [openrouter.ai/keys](https://openrouter.ai/keys).
+2. `OPENROUTER_API_KEY=sk-or-...` + `CITOFONO_AI_PROVIDER=openrouter`.
+   `CITOFONO_AI_MODEL=meta-llama/llama-3.3-70b-instruct` (esempio).
+
+**Ollama** (modelli locali, costo zero):
+1. Installa Ollama: `curl -fsSL https://ollama.com/install.sh | sh`
+   (oppure scaricalo per Windows/Mac).
+2. Pulla un modello: `ollama pull llama3.3` (8B params, ~5GB)
+   oppure `ollama pull qwen2.5:7b` (ottimo in italiano).
+3. Verifica che giri: `curl http://localhost:11434/api/tags`.
+4. Imposta `CITOFONO_AI_PROVIDER=ollama CITOFONO_AI_MODEL=llama3.3`.
+5. **Su Vercel**: Ollama gira sul tuo server locale, non su Vercel. Devi
+   esporre Ollama via Tailscale / Cloudflare Tunnel e settare
+   `OLLAMA_HOST=https://my-ollama.tailnet.ts.net` come env var Vercel.
+   Per la piena privacy GDPR, considera self-hosting tutto Citofono.
 
 ---
 

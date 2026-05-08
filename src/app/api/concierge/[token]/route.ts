@@ -72,6 +72,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
       details: {
         language: result.language,
         usedChunks: result.usedChunks,
+        provider: result.provider,
+        model: result.modelUsed,
         usage: result.usage,
       },
       ...ipAndUaFromHeaders(req.headers),

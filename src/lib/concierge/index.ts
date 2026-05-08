@@ -22,8 +22,8 @@
  *   - Rate limit per booking (vedi route handler).
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import type { KnowledgeChunk, Property } from '@prisma/client';
+import { getProvider } from '../ai';
 
 const SYSTEM_PROMPT = `Sei il concierge digitale di un alloggio in affitto breve.
 Rispondi a chi vi soggiorna in modo cortese, chiaro e nella sua lingua.
@@ -62,7 +62,10 @@ export interface ConciergeAskOutput {
   reply: string;
   language: string;
   usedChunks: string[];
-  /** Number of input/output tokens charged by Anthropic, for analytics. */
+  /** Provider+model usato (per analytics multi-provider). */
+  provider?: string;
+  modelUsed?: string;
+  /** Token consumati. undefined se il provider non li espone (es. alcuni Ollama). */
   usage?: { input: number; output: number };
 }
 
@@ -150,17 +153,13 @@ export function buildContextBlock(ctx: ConciergeContext, picked: ConciergeContex
   return lines.join('\n');
 }
 
-let client: Anthropic | null = null;
-function anthropic(): Anthropic {
-  if (!client) {
-    const key = process.env.ANTHROPIC_API_KEY;
-    if (!key) throw new Error('ANTHROPIC_API_KEY missing');
-    client = new Anthropic({ apiKey: key });
-  }
-  return client;
+/**
+ * Backwards-compat: rispetta `CITOFONO_CONCIERGE_MODEL` (legacy) come
+ * override del modello, altrimenti usa il default del provider attivo.
+ */
+function resolveModel(): string | undefined {
+  return process.env.CITOFONO_CONCIERGE_MODEL ?? undefined;
 }
-
-const MODEL = process.env.CITOFONO_CONCIERGE_MODEL ?? 'claude-haiku-4-5-20251001';
 
 export async function conciergeAsk(input: ConciergeAskInput): Promise<ConciergeAskOutput> {
   const lang = input.languageHint ?? detectLanguageHint(input.message);
@@ -176,25 +175,22 @@ export async function conciergeAsk(input: ConciergeAskInput): Promise<ConciergeA
     content: `${contextBlock}\n\n# Messaggio dell'ospite (lingua: ${lang})\n${input.message}`,
   });
 
-  const res = await anthropic().messages.create({
-    model: MODEL,
-    max_tokens: 600,
-    system: SYSTEM_PROMPT,
+  const provider = getProvider(resolveModel());
+  const res = await provider.complete({
+    systemPrompt: SYSTEM_PROMPT,
     messages,
+    maxOutputTokens: 600,
+    temperature: 0.4,
   });
 
-  const replyText = res.content
-    .filter((b) => b.type === 'text')
-    .map((b) => (b.type === 'text' ? b.text : ''))
-    .join('\n')
-    .trim();
-
   return {
-    reply: replyText,
+    reply: res.text,
     language: lang,
     usedChunks: picked.map((c) => c.topic),
+    provider: provider.name,
+    modelUsed: res.model,
     usage: res.usage
-      ? { input: res.usage.input_tokens, output: res.usage.output_tokens }
+      ? { input: res.usage.inputTokens, output: res.usage.outputTokens }
       : undefined,
   };
 }
