@@ -45,13 +45,15 @@ export async function syncAllProperties(
     errors: [],
   };
 
-  const properties = await prisma.property.findMany({
-    where: { archivedAt: null, NOT: { icalUrls: { equals: null as unknown as object } } },
+  // Prisma's Json filter is awkward for "not null AND non-empty array" in a
+  // portable way; fetch active properties and filter in JS. Volume is small.
+  const allActive = await prisma.property.findMany({
+    where: { archivedAt: null },
   });
+  const properties = allActive.filter((p) => extractIcalUrls(p).length > 0);
 
   for (const prop of properties) {
     const urls = extractIcalUrls(prop);
-    if (urls.length === 0) continue;
     result.propertiesProcessed++;
     for (const url of urls) {
       try {

@@ -1,6 +1,6 @@
 {
   "name": "citofono",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Il citofono digitale per il tuo affitto breve. Check-in de visu legale, concierge AI multilingua, Alloggiati Web automatico.",
   "type": "module",
@@ -52,6 +52,7 @@
     "@radix-ui/react-toast": "^1.2.4"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.15",
     "@types/node": "^22.10.0",
     "@types/papaparse": "^5.3.15",
     "@types/react": "^19.0.0",

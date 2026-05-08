@@ -14,6 +14,9 @@ export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
+  if (process.env.NODE_ENV === 'production' && !expected) {
+    return NextResponse.json({ error: 'cron_secret_required' }, { status: 500 });
+  }
   if (expected) {
     const auth = req.headers.get('authorization');
     if (auth !== `Bearer ${expected}`) {

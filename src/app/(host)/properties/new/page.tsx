@@ -17,6 +17,9 @@ const PropertySchema = z.object({
   wifiName: z.string().max(80).optional(),
   wifiPassword: z.string().max(80).optional(),
   guideMarkdown: z.string().max(20_000).optional(),
+  icalUrls: z.string().max(2000).optional(),
+  taxPerPersonNight: z.string().max(10).optional(),
+  taxMaxNights: z.string().max(4).optional(),
 });
 
 async function createPropertyAction(formData: FormData) {
@@ -29,15 +32,34 @@ async function createPropertyAction(formData: FormData) {
   if (!parsed.success) {
     redirect('/properties/new?error=invalid');
   }
+  const icalUrls = (parsed.data.icalUrls ?? '')
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.startsWith('http'));
+
+  const taxPerPersonNight = parsed.data.taxPerPersonNight
+    ? Number(parsed.data.taxPerPersonNight.replace(',', '.'))
+    : null;
+  const taxMaxNights = parsed.data.taxMaxNights ? parseInt(parsed.data.taxMaxNights, 10) : null;
+
   await prisma.property.create({
     data: {
       hostId: user.id,
-      ...parsed.data,
+      name: parsed.data.name,
+      address: parsed.data.address,
+      city: parsed.data.city,
+      province: parsed.data.province,
+      postalCode: parsed.data.postalCode,
+      checkInTime: parsed.data.checkInTime,
+      checkOutTime: parsed.data.checkOutTime,
       cin: parsed.data.cin || null,
       alloggiatiCode: parsed.data.alloggiatiCode || null,
       wifiName: parsed.data.wifiName || null,
       wifiPassword: parsed.data.wifiPassword || null,
       guideMarkdown: parsed.data.guideMarkdown || null,
+      icalUrls: icalUrls.length > 0 ? icalUrls : undefined,
+      taxPerPersonNight: taxPerPersonNight && Number.isFinite(taxPerPersonNight) ? taxPerPersonNight : null,
+      taxMaxNights: taxMaxNights && Number.isFinite(taxMaxNights) ? taxMaxNights : null,
     },
   });
   redirect('/properties');
@@ -83,6 +105,36 @@ export default function NewPropertyPage() {
             Il concierge AI userà questo testo per rispondere alle domande degli ospiti in 20 lingue.
           </p>
         </div>
+
+        <fieldset className="space-y-3 rounded-md border border-ink/10 p-4">
+          <legend className="px-2 text-xs uppercase tracking-wider text-ink/50">Sync calendari</legend>
+          <div>
+            <label htmlFor="icalUrls" className="citofono-label">URL iCal (uno per riga)</label>
+            <textarea
+              id="icalUrls"
+              name="icalUrls"
+              rows={3}
+              placeholder={`https://www.airbnb.com/calendar/ical/...\nhttps://admin.booking.com/hotel/hoteladmin/.../ical?...`}
+              className="citofono-input mt-1 font-mono text-xs"
+            />
+            <p className="mt-1 text-xs text-ink/50">
+              Sincronizziamo le prenotazioni ogni 30 min. Su Airbnb: Calendario → Esporta calendario.
+            </p>
+          </div>
+        </fieldset>
+
+        <fieldset className="space-y-3 rounded-md border border-ink/10 p-4">
+          <legend className="px-2 text-xs uppercase tracking-wider text-ink/50">Imposta di soggiorno</legend>
+          <p className="text-xs text-ink/50">
+            Se il Comune dell'appartamento è nel nostro elenco, applichiamo automaticamente la tariffa giusta.
+            Sovrascrivi solo se la tua tariffa è diversa (regimi speciali, esenzioni di legge particolari).
+          </p>
+          <div className="grid gap-5 md:grid-cols-2">
+            <Field name="taxPerPersonNight" label="€/persona/notte (override)" placeholder="3,00" />
+            <Field name="taxMaxNights" label="Notti massime (override)" placeholder="10" />
+          </div>
+        </fieldset>
+
         <div className="flex gap-3">
           <button type="submit" className="citofono-btn-primary">Salva appartamento</button>
           <Link href="/properties" className="citofono-btn-secondary">Annulla</Link>

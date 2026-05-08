@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { cookies, headers } from 'next/headers';
-import { lucia, verifyPassword } from '@/lib/auth';
+import { lucia, verifyPassword, dummyHash } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { audit, ipAndUaFromHeaders } from '@/lib/audit';
 
@@ -19,13 +19,12 @@ async function loginAction(formData: FormData) {
   }
   const { email, password } = parsed.data;
   const host = await prisma.host.findUnique({ where: { email } });
-  if (!host) {
-    // Do a fake hash compare to avoid timing oracles.
-    await verifyPassword('$argon2id$v=19$m=19456,t=2,p=1$abc$abc', password);
-    redirect('/login?error=credentials');
-  }
-  const ok = await verifyPassword(host.hashedPassword, password);
-  if (!ok) {
+  // Always run a verifyPassword to keep timing roughly constant.
+  // DUMMY_HASH is a real argon2id hash of 'unguessable-placeholder' generated
+  // once at module init in lib/auth.
+  const referenceHash = host?.hashedPassword ?? (await dummyHash());
+  const ok = await verifyPassword(referenceHash, password);
+  if (!host || !ok) {
     redirect('/login?error=credentials');
   }
   const session = await lucia.createSession(host.id, {});

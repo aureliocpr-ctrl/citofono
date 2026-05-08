@@ -70,13 +70,15 @@ export const validateRequest = cache(async () => {
   return result;
 });
 
+const ARGON_OPTS = {
+  type: argon2.argon2id,
+  memoryCost: 19_456,
+  timeCost: 2,
+  parallelism: 1,
+} as const;
+
 export async function hashPassword(plain: string): Promise<string> {
-  return argon2.hash(plain, {
-    type: argon2.argon2id,
-    memoryCost: 19_456,
-    timeCost: 2,
-    parallelism: 1,
-  });
+  return argon2.hash(plain, ARGON_OPTS);
 }
 
 export async function verifyPassword(hash: string, plain: string): Promise<boolean> {
@@ -86,3 +88,24 @@ export async function verifyPassword(hash: string, plain: string): Promise<boole
     return false;
   }
 }
+
+/**
+ * Lazy reference hash used for "constant-time" failed-login responses.
+ * Without it, an attacker could measure response time to discover whether
+ * an email exists in our DB.
+ *
+ * Computed once on first call and cached.
+ */
+let cachedDummyHash: Promise<string> | null = null;
+export function dummyHash(): Promise<string> {
+  if (!cachedDummyHash) {
+    cachedDummyHash = argon2.hash(
+      '__citofono_dummy_pwd_for_constant_time_compare__',
+      ARGON_OPTS,
+    );
+  }
+  return cachedDummyHash;
+}
+
+/** Synchronous-style getter for callers that already awaited it once. */
+export const DUMMY_HASH_PROMISE = dummyHash();

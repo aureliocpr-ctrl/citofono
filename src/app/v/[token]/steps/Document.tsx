@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { embeddingFromFile } from '@/lib/face/client';
+import { ocrImageBrowser } from '@/lib/ocr/client';
 
 interface DocumentResult {
   fields: {
@@ -53,12 +54,23 @@ export function DocumentStep({ token, guestId, onNext }: Props) {
         );
       }
 
-      // 2. Send the file to the server for OCR.
+      // 2. OCR client-side (Tesseract.js nel browser) — privacy + reliability.
       setStatusMsg('Leggo i dati...');
+      let ocrText = '';
+      try {
+        const r = await ocrImageBrowser(file);
+        ocrText = r.text;
+      } catch {
+        // Se Tesseract fallisce nel browser (vecchi smartphone, blocchi worker)
+        // mandiamo comunque la foto al server, che proverà server-side.
+      }
+
+      // 3. Send file + ocrText to the server for parsing & storage.
       const fd = new FormData();
       fd.set('guestId', guestId);
       fd.set('side', 'FRONT');
       fd.set('file', file);
+      if (ocrText) fd.set('ocrText', ocrText);
       const res = await fetch(`/api/guest/${token}/document`, { method: 'POST', body: fd });
       if (!res.ok) {
         const err = await res.text();

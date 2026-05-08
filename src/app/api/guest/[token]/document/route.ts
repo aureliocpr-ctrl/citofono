@@ -2,19 +2,26 @@
  * POST /api/guest/[token]/document
  *
  * Riceve l'immagine del documento (multipart/form-data, campo "file") +
- * guestId + side (front/back). Esegue OCR via Tesseract, prova a estrarre
- * MRZ, salva l'immagine grezza su storage con TTL breve, salva i dati
- * estratti su DB. Restituisce i campi parsati per la review umana.
+ * guestId + side + ocrText (già estratto nel browser, opzionale).
+ *
+ * Comportamento:
+ *   - Se il client ha già fatto OCR (campo `ocrText` non vuoto), usa quello.
+ *   - Se manca `ocrText`, lo estrae server-side via Tesseract (best-effort,
+ *     può fallire in serverless).
+ * In entrambi i casi salva l'immagine su storage con TTL breve, calcola
+ * MRZ + extract dei campi, salva su DB e ritorna i campi parsati.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { loadGuestSession } from '@/lib/guestSession';
 import { putObject, documentKey } from '@/lib/storage';
-import { ocrImage } from '@/lib/ocr/runner';
 import { extractFromOcrText } from '@/lib/ocr/extract';
 import { audit, ipAndUaFromHeaders } from '@/lib/audit';
 import type { DocumentSide } from '@prisma/client';
+
+export const runtime = 'nodejs';
+export const maxDuration = 30;
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params;
@@ -25,6 +32,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const guestId = form.get('guestId');
   const sideRaw = form.get('side');
   const file = form.get('file');
+  const ocrText = form.get('ocrText');
 
   if (typeof guestId !== 'string' || !file || !(file instanceof File)) {
     return NextResponse.json({ error: 'missing_fields' }, { status: 400 });
@@ -41,22 +49,28 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   const key = documentKey(sess.booking.id, guest.id, side === 'FRONT' ? 'front' : 'back', ext);
   await putObject(key, buf, file.type || 'image/jpeg', { ttlCategory: 'verification' });
 
-  let extracted: ReturnType<typeof extractFromOcrText> | null = null;
-  let rawText = '';
-  try {
-    const out = await ocrImage(buf);
-    rawText = out.text;
-    extracted = extractFromOcrText(rawText);
-  } catch (err) {
-    await audit({
-      event: 'ocr.failed',
-      bookingId: sess.booking.id,
-      guestId: guest.id,
-      details: { error: err instanceof Error ? err.message : String(err) },
-      ...ipAndUaFromHeaders(req.headers),
-    });
-    return NextResponse.json({ error: 'ocr_failed' }, { status: 500 });
+  let rawText = typeof ocrText === 'string' ? ocrText : '';
+
+  // Server-side OCR fallback (in case the client couldn't run Tesseract).
+  if (!rawText) {
+    try {
+      // Lazy-import the server runner — keeps the bundle slim.
+      const { ocrImage } = await import('@/lib/ocr/runner');
+      const out = await ocrImage(buf);
+      rawText = out.text;
+    } catch (err) {
+      await audit({
+        event: 'ocr.failed',
+        bookingId: sess.booking.id,
+        guestId: guest.id,
+        details: { error: err instanceof Error ? err.message : String(err) },
+        ...ipAndUaFromHeaders(req.headers),
+      });
+      return NextResponse.json({ error: 'ocr_failed_server_fallback' }, { status: 500 });
+    }
   }
+
+  const extracted = extractFromOcrText(rawText);
 
   await prisma.document.create({
     data: {
@@ -69,8 +83,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     },
   });
 
-  // Update guest with extracted fields (only if not already set, so back-side
-  // upload doesn't overwrite front-side data)
   await prisma.guest.update({
     where: { id: guest.id },
     data: {
@@ -94,6 +106,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
       source: extracted.source,
       confidence: extracted.confidence,
       needsReview: extracted.needsReview,
+      ocrLocation: rawText === (typeof ocrText === 'string' ? ocrText : '') ? 'client' : 'server',
     },
     ...ipAndUaFromHeaders(req.headers),
   });

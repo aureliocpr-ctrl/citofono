@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-05-08
+
+Fix delle 14 fragilità identificate nell'audit interno onesto. Adesso il flusso vero è eseguibile end-to-end.
+
+### Fixed
+- **Tailwind Typography**: installato `@tailwindcss/typography`, le pagine `/privacy`, `/terms`, `/dpia` ora hanno `prose` styling reale (non più HTML grezzo).
+- **Login timing-oracle**: il fake-hash inventato `$argon2id$...$abc$abc` non era un argon2 valido (il verify lanciava errore subito). Sostituito con `dummyHash()` lazy che genera un hash argon2id reale al primo uso e lo cacha. Risposta in tempo costante anche per email inesistenti.
+- **iCal `Json?` query cast forzato** (`null as unknown as object`): rimosso. Adesso fetcha tutte le Property attive e filtra in JS con `extractIcalUrls(p).length > 0`.
+- **CRON_SECRET obbligatorio in production**: in `NODE_ENV=production` le route cron rispondono 500 se `CRON_SECRET` non è impostato. Niente endpoint pubblici per cron.
+
+### Added
+- **Pagina `/properties/[id]`** con riepilogo property, configurazione e **CRUD Knowledge Chunks** per il concierge (server actions). Senza questo il concierge AI risponde "non lo so" su tutto.
+- **Form Property esteso**: campi `icalUrls` (textarea, una per riga) e override imposta soggiorno (`taxPerPersonNight`, `taxMaxNights`). Senza questo il sync iCal non parte mai.
+- **OCR client-side**: nuovo modulo `lib/ocr/client.ts` (Tesseract.js worker nel browser). Lo step Document fa OCR nel browser e manda al server solo il testo. Migliore privacy + bypassa i limiti Vercel functions (FS readonly, timeout 10s, modelli 12MB).
+- **Server-side fallback OCR** mantenuto: se il browser dell'ospite non riesce a runnare Tesseract, il file va al server che prova a sua volta.
+- **Migration Prisma**: `prisma/migrations/20260508000000_initial/migration.sql` (240 righe) con tutte le tabelle, enum, FK, index. `prisma migrate deploy` ora funziona.
+- **Test E2E Playwright** (`e2e/smoke.spec.ts`): copre landing, pagine legali, signup completo, creazione property, creazione booking, link guest aperto in context separato fino allo step consenso. CI con service Postgres.
+
+### Changed
+- API `/api/guest/[token]/document` accetta opzionalmente `ocrText` pre-elaborato dal browser. Se assente, fallback server-side con `import('@/lib/ocr/runner')` lazy.
+- CI workflow: aggiunto job `e2e` con Postgres service 5432, install browsers Playwright, build + run smoke. Upload artifact playwright-report on failure.
+
 ## [0.2.0] - 2026-05-08
 
 Lanciabile a host beta.
