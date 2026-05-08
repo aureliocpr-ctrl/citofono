@@ -85,6 +85,12 @@ model Property {
   wifiPassword String?
   // Note libere → indicizzate per concierge
   guideMarkdown String?  @db.Text
+  // iCal sync da Airbnb / Booking / VRBO (URL pubblico .ics)
+  icalUrls      Json?    // string[] di URL
+  icalLastSync  DateTime?
+  // Imposta soggiorno (€ per persona per notte)
+  taxPerPersonNight Decimal? @db.Decimal(6, 2)
+  taxMaxNights      Int?     // limite (es. Roma 10, Firenze 7)
   // Soft-delete
   archivedAt   DateTime?
   createdAt    DateTime @default(now())

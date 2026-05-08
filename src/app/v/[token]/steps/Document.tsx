@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { embeddingFromFile } from '@/lib/face/client';
 
 interface DocumentResult {
   fields: {
@@ -29,6 +30,7 @@ export function DocumentStep({ token, guestId, onNext }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -43,9 +45,16 @@ export function DocumentStep({ token, guestId, onNext }: Props) {
     setError(null);
     try {
       // 1. Compute face embedding from the document photo, browser-side.
-      const docEmbedding = await computeDocEmbedding(file);
+      setStatusMsg('Cerco il volto sul documento...');
+      const embedding = await embeddingFromFile(file);
+      if (!embedding) {
+        throw new Error(
+          'Non riusciamo a vedere un volto sul documento. Inquadra meglio la foto del passaporto/CdI e riprova.',
+        );
+      }
 
       // 2. Send the file to the server for OCR.
+      setStatusMsg('Leggo i dati...');
       const fd = new FormData();
       fd.set('guestId', guestId);
       fd.set('side', 'FRONT');
@@ -56,10 +65,11 @@ export function DocumentStep({ token, guestId, onNext }: Props) {
         throw new Error(`OCR fallita: ${err.slice(0, 100)}`);
       }
       const data = (await res.json()) as Omit<DocumentResult, 'docEmbedding'>;
-      onNext({ ...data, docEmbedding });
+      onNext({ ...data, docEmbedding: Array.from(embedding) });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Errore. Riprova.');
       setSubmitting(false);
+      setStatusMsg('');
     }
   }
 
@@ -118,41 +128,10 @@ export function DocumentStep({ token, guestId, onNext }: Props) {
       )}
 
       <div className="mt-6">
-        <button
-          onClick={handleSubmit}
-          disabled={!file || submitting}
-          className="guest-btn"
-        >
-          {submitting ? 'Stiamo leggendo il documento...' : 'Continua →'}
+        <button onClick={handleSubmit} disabled={!file || submitting} className="guest-btn">
+          {submitting ? statusMsg || 'Elaboro...' : 'Continua →'}
         </button>
       </div>
     </div>
   );
-}
-
-/**
- * Calcola l'embedding facciale dalla foto del documento.
- * Per MVP, in assenza di face-api.js installato a runtime, ritorna un vettore
- * pseudo-random deterministico (hash dell'immagine). Sostituire in produzione
- * con face-api.js + tinyFaceDetector + faceRecognitionNet.
- */
-async function computeDocEmbedding(file: File): Promise<number[]> {
-  const buf = await file.arrayBuffer();
-  return deterministicEmbedding(new Uint8Array(buf));
-}
-
-/** Hash-based embedding placeholder, 128-dim, normalized to unit length. */
-export function deterministicEmbedding(bytes: Uint8Array): number[] {
-  const out = new Array(128).fill(0) as number[];
-  let seed = 2_166_136_261;
-  for (let i = 0; i < bytes.length; i++) {
-    seed ^= bytes[i] ?? 0;
-    seed = Math.imul(seed, 16_777_619);
-    out[i % 128] = (out[i % 128] ?? 0) + ((seed % 1000) / 1000);
-  }
-  // Normalize to unit length
-  let norm = 0;
-  for (const x of out) norm += x * x;
-  norm = Math.sqrt(norm) || 1;
-  return out.map((x) => x / norm);
 }

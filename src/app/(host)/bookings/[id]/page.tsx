@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { validateRequest } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { CopyButton } from '@/components/CopyButton';
+import { SendLinkButton } from './SendLinkButton';
 
 export default async function BookingDetailPage(props: { params: Promise<{ id: string }> }) {
   const { user } = await validateRequest();
@@ -36,11 +37,9 @@ export default async function BookingDetailPage(props: { params: Promise<{ id: s
           <code className="block flex-1 truncate rounded-md bg-ink/5 px-3 py-2 text-xs">{checkInUrl}</code>
           <CopyButton text={checkInUrl} />
         </div>
-        {booking.leadEmail && (
-          <p className="mt-2 text-xs text-ink/50">
-            Manuale per ora — l'invio automatico via email/WhatsApp arriva in v0.2.
-          </p>
-        )}
+        <div className="mt-4">
+          <SendLinkButton bookingId={booking.id} hasEmail={!!booking.leadEmail} />
+        </div>
       </section>
 
       <section className="citofono-card p-6">

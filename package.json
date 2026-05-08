@@ -1,6 +1,6 @@
 {
   "name": "citofono",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Il citofono digitale per il tuo affitto breve. Check-in de visu legale, concierge AI multilingua, Alloggiati Web automatico.",
   "type": "module",
@@ -24,7 +24,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@mediapipe/tasks-vision": "^0.10.18",
     "@prisma/client": "^5.22.0",
+    "@vladmandic/face-api": "^1.7.14",
+    "ical.js": "^2.1.0",
     "argon2": "^0.41.1",
     "lucia": "^3.2.0",
     "@lucia-auth/adapter-prisma": "^4.0.1",

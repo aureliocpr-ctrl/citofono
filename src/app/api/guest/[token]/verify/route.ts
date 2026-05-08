@@ -24,6 +24,7 @@ import { prisma } from '@/lib/db';
 import { loadGuestSession } from '@/lib/guestSession';
 import { matchEmbeddings, encodeEmbedding } from '@/lib/face/match';
 import { audit, ipAndUaFromHeaders } from '@/lib/audit';
+import { sendHostGuestVerified, sendHostCheckInReview } from '@/lib/email';
 
 const Schema = z.object({
   guestId: z.string().min(1),
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     ...ipAndUaFromHeaders(req.headers),
   });
 
-  // If all guests verified, mark check-in as completed.
+  // If all guests verified, mark check-in as completed and notify the host.
   if (result.verdict === 'match') {
     const remaining = await prisma.guest.count({
       where: { bookingId: sess.booking.id, verified: false },
@@ -128,12 +129,46 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
         guestId: guest.id,
         ...ipAndUaFromHeaders(req.headers),
       });
+
+      // Notify host (best-effort; failure here doesn't block the response)
+      const property = await prisma.property.findUnique({
+        where: { id: sess.booking.propertyId },
+        include: { host: true },
+      });
+      if (property?.host) {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+        const guestName = `${guest.firstName ?? ''} ${guest.lastName ?? ''}`.trim() || sess.booking.leadName;
+        await sendHostGuestVerified({
+          to: property.host.email,
+          hostName: property.host.fullName,
+          propertyName: property.name,
+          guestName,
+          bookingLink: `${appUrl}/bookings/${sess.booking.id}`,
+        }).catch(() => {
+          // logged via audit later if needed
+        });
+      }
     }
   } else if (result.verdict === 'review') {
     await prisma.checkIn.update({
       where: { bookingId: sess.booking.id },
       data: { status: 'AWAITING_REVIEW' },
     });
+    const property = await prisma.property.findUnique({
+      where: { id: sess.booking.propertyId },
+      include: { host: true },
+    });
+    if (property?.host) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+      const guestName = `${guest.firstName ?? ''} ${guest.lastName ?? ''}`.trim() || sess.booking.leadName;
+      await sendHostCheckInReview({
+        to: property.host.email,
+        hostName: property.host.fullName,
+        propertyName: property.name,
+        guestName,
+        reviewLink: `${appUrl}/bookings/${sess.booking.id}`,
+      }).catch(() => {});
+    }
   }
 
   return NextResponse.json({
