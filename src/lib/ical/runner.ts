@@ -93,7 +93,6 @@ async function processEvent(
   prop: Property,
   ev: IcalEvent,
 ): Promise<boolean> {
-  if (ev.status === 'CANCELLED') return false;
   // Skip "Not available" placeholder events that Airbnb sometimes pushes
   if (/not\s+available|airbnb\s*\(not\s*available\)/i.test(ev.summary)) return false;
 
@@ -102,15 +101,36 @@ async function processEvent(
     where: { propertyId: prop.id, externalRef },
   });
 
+  // L'evento è stato cancellato sul calendario sorgente.
+  // Se abbiamo già un booking, marchiamolo CANCELLED — non vogliamo che
+  // l'host venda di nuovo le date pensando che siano libere quando non lo
+  // sono, e non vogliamo che il guest possa ancora completare check-in.
+  if (ev.status === 'CANCELLED') {
+    if (existing && existing.status !== 'CANCELLED') {
+      await prisma.booking.update({
+        where: { id: existing.id },
+        data: { status: 'CANCELLED' },
+      });
+    }
+    return false;
+  }
+
   const tokenExp = new Date(ev.end);
   tokenExp.setDate(tokenExp.getDate() + 1);
 
   if (existing) {
+    // Aggiorna le date in caso di modifica sul calendario sorgente. Mantieni
+    // numGuests perché può essere stato corretto manualmente dall'host.
+    // Aggiorna anche checkInTokenExp così il link guest resta valido fino al
+    // nuovo checkout + 1 giorno.
+    const newTokenExp = new Date(ev.end);
+    newTokenExp.setDate(newTokenExp.getDate() + 1);
     await prisma.booking.update({
       where: { id: existing.id },
       data: {
         checkInDate: ev.start,
         checkOutDate: ev.end,
+        checkInTokenExp: newTokenExp,
       },
     });
     return false;

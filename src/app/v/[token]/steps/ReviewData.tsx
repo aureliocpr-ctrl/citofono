@@ -7,6 +7,7 @@ interface Fields {
   surname?: string;
   givenNames?: string;
   birthDate?: string;
+  birthPlace?: string;
   nationality?: string;
   documentType?: string;
   documentNumber?: string;
@@ -35,6 +36,7 @@ export function ReviewData({ token, guestId, fields, needsReview, onConfirmed }:
   const [firstName, setFirstName] = useState(fields.givenNames ?? '');
   const [lastName, setLastName] = useState(fields.surname ?? '');
   const [birthDate, setBirthDate] = useState(fields.birthDate ?? '');
+  const [birthPlace, setBirthPlace] = useState(fields.birthPlace ?? '');
   const [nationality, setNationality] = useState(initialNationality);
   const [birthCountry, setBirthCountry] = useState(initialNationality);
   const [sex, setSex] = useState<'M' | 'F' | 'X'>(fields.sex ?? 'M');
@@ -57,6 +59,7 @@ export function ReviewData({ token, guestId, fields, needsReview, onConfirmed }:
           firstName,
           lastName,
           birthDate,
+          birthPlace: birthPlace || undefined,
           birthCountry,
           nationality,
           sex,
@@ -117,6 +120,16 @@ export function ReviewData({ token, guestId, fields, needsReview, onConfirmed }:
         <Field label="Paese di nascita">
           <CountrySelect value={birthCountry} onChange={setBirthCountry} />
         </Field>
+        {birthCountry === 'ITA' && (
+          <Field label="Comune di nascita (richiesto per la schedina Polizia)">
+            <input
+              value={birthPlace}
+              onChange={(e) => setBirthPlace(e.target.value)}
+              placeholder="es. Roma"
+              className="guest-input"
+            />
+          </Field>
+        )}
         <Field label="Tipo documento">
           <select value={docType} onChange={(e) => setDocType(e.target.value)} className="guest-input">
             <option value="PASSPORT">Passaporto</option>

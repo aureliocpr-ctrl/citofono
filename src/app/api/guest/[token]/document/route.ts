@@ -92,6 +92,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
       firstName: guest.firstName ?? extracted.givenNames ?? null,
       lastName: guest.lastName ?? extracted.surname ?? null,
       birthDate: guest.birthDate ?? (extracted.birthDate ? new Date(extracted.birthDate) : null),
+      birthPlace: guest.birthPlace ?? extracted.birthPlace ?? null,
+      // Per la nazione di nascita: il MRZ ha l'issuing country (passaporto) ma
+      // non sempre il birth country. Usiamo `nationality` come proxy ragionevole;
+      // l'host può correggere a mano via ReviewData se serve.
+      birthCountry: guest.birthCountry ?? extracted.nationality ?? null,
       nationality: guest.nationality ?? extracted.nationality ?? null,
       sex: guest.sex ?? (extracted.sex === 'X' ? null : extracted.sex ?? null),
       docType: guest.docType ?? extracted.documentType ?? null,
