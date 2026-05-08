@@ -42,9 +42,11 @@ describe('parseIcal', () => {
     expect(days).toBe(7);
   });
 
-  it('returns empty array for invalid input', () => {
+  it('empty input returns empty array', () => {
     expect(parseIcal('')).toEqual([]);
-    expect(parseIcal('not valid ics')).toEqual([]);
+  });
+  it('throws on malformed ICS so runner can surface the error to the host', () => {
+    expect(() => parseIcal('not valid ics')).toThrow(/parse failed/i);
   });
 });
 

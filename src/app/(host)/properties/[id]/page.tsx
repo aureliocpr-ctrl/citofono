@@ -25,9 +25,19 @@ const PropertyUpdateSchema = z.object({
   checkOutTime: z.string().regex(/^\d{2}:\d{2}$/),
   wifiName: z.string().max(80).optional().or(z.literal('')),
   wifiPassword: z.string().max(80).optional().or(z.literal('')),
-  icalUrls: z.string().optional(),
-  taxPerPersonNight: z.string().optional(),
-  taxMaxNights: z.string().optional(),
+  icalUrls: z.string().max(5000).optional(),
+  // Stringhe numeriche: accettano vuoto o un numero finito (con virgola
+  // italiana o punto), nessuna stringa garbled tipo "abc".
+  taxPerPersonNight: z
+    .string()
+    .max(10)
+    .optional()
+    .refine((v) => !v || /^\d+([.,]\d+)?$/.test(v.trim()), 'tax_invalid'),
+  taxMaxNights: z
+    .string()
+    .max(4)
+    .optional()
+    .refine((v) => !v || /^\d+$/.test(v.trim()), 'taxnights_invalid'),
 });
 
 async function updateProperty(formData: FormData) {
@@ -64,8 +74,10 @@ async function updateProperty(formData: FormData) {
       wifiName: parsed.data.wifiName || null,
       wifiPassword: parsed.data.wifiPassword || null,
       icalUrls: icalArr.length > 0 ? icalArr : Prisma.DbNull,
-      taxPerPersonNight: parsed.data.taxPerPersonNight ? Number(parsed.data.taxPerPersonNight) : null,
-      taxMaxNights: parsed.data.taxMaxNights ? Number(parsed.data.taxMaxNights) : null,
+      taxPerPersonNight: parsed.data.taxPerPersonNight
+        ? Number(parsed.data.taxPerPersonNight.replace(',', '.'))
+        : null,
+      taxMaxNights: parsed.data.taxMaxNights ? parseInt(parsed.data.taxMaxNights, 10) : null,
     },
   });
   await audit({ event: 'property.updated', hostId: user.id, details: { propertyId } });
@@ -106,11 +118,13 @@ async function addChunk(formData: FormData) {
   const propertyId = formData.get('propertyId');
   if (typeof propertyId !== 'string') redirect('/properties');
   const parsed = ChunkSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    redirect(`/properties/${propertyId}?error=invalid`);
+  }
   const property = await prisma.property.findFirst({
     where: { id: propertyId, hostId: user.id },
   });
-  if (!property) return;
+  if (!property) redirect('/properties');
   await prisma.knowledgeChunk.create({
     data: {
       propertyId,
@@ -120,6 +134,7 @@ async function addChunk(formData: FormData) {
     },
   });
   revalidatePath(`/properties/${propertyId}`);
+  redirect(`/properties/${propertyId}?ok=chunk_added`);
 }
 
 async function deleteChunk(formData: FormData) {
@@ -128,14 +143,18 @@ async function deleteChunk(formData: FormData) {
   if (!user) redirect('/login');
   const id = formData.get('id');
   const propertyId = formData.get('propertyId');
-  if (typeof id !== 'string' || typeof propertyId !== 'string') return;
-  // verify ownership through join
+  if (typeof id !== 'string' || typeof propertyId !== 'string') {
+    redirect('/properties');
+  }
   const chunk = await prisma.knowledgeChunk.findFirst({
     where: { id, property: { hostId: user.id } },
   });
-  if (!chunk) return;
+  if (!chunk) {
+    redirect(`/properties/${propertyId}`);
+  }
   await prisma.knowledgeChunk.delete({ where: { id } });
   revalidatePath(`/properties/${propertyId}`);
+  redirect(`/properties/${propertyId}?ok=chunk_deleted`);
 }
 
 export default async function PropertyDetailPage(props: {
@@ -175,6 +194,16 @@ export default async function PropertyDetailPage(props: {
       {sp.ok === 'updated' && (
         <div className="rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm text-green-700">
           Modifiche salvate.
+        </div>
+      )}
+      {sp.ok === 'chunk_added' && (
+        <div className="rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm text-green-700">
+          Voce knowledge base aggiunta.
+        </div>
+      )}
+      {sp.ok === 'chunk_deleted' && (
+        <div className="rounded-md border border-green-300 bg-green-50 px-4 py-2 text-sm text-green-700">
+          Voce eliminata.
         </div>
       )}
       {sp.error === 'invalid' && (

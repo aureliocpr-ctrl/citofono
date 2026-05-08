@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   buildAlloggiatiLine,
   buildAlloggiatiFile,
+  buildAlloggiatiFileWithWarnings,
   buildAlloggiatiCsv,
   type AlloggiatiGuest,
 } from '@/lib/alloggiati/export';
+import { lookupComune } from '@/lib/alloggiati/comuni';
 
 const sampleGuest: AlloggiatiGuest = {
   arrivalDate: '2026-06-12',
@@ -75,5 +77,67 @@ describe('buildAlloggiatiCsv', () => {
   it('replaces ISO country codes with italian names', () => {
     const csv = buildAlloggiatiCsv([sampleGuest]);
     expect(csv).toContain('GERMANIA');
+  });
+});
+
+describe('lookupComune', () => {
+  it('returns codice catastale H501 for Roma', () => {
+    expect(lookupComune('Roma')?.codice).toBe('H501');
+  });
+  it('is case- and accent-insensitive', () => {
+    expect(lookupComune('FIRENZE')?.codice).toBe('D612');
+    expect(lookupComune('firenze')?.codice).toBe('D612');
+  });
+  it('returns undefined for comuni not in table (host fixes manually)', () => {
+    expect(lookupComune('Castelnuovoborbera')).toBeUndefined();
+  });
+  it('returns undefined for empty input', () => {
+    expect(lookupComune('')).toBeUndefined();
+    expect(lookupComune(null)).toBeUndefined();
+    expect(lookupComune(undefined)).toBeUndefined();
+  });
+});
+
+describe('buildAlloggiatiLine — comune di nascita italiano', () => {
+  const italianGuest: AlloggiatiGuest = {
+    arrivalDate: '2026-06-12',
+    numNights: 3,
+    surname: 'Rossi',
+    givenNames: 'Mario',
+    sex: 'M',
+    birthDate: '1980-04-15',
+    birthPlace: 'Roma',
+    birthCountryCode3: 'ITA',
+    citizenshipCode3: 'ITA',
+    documentType: 'ID_CARD',
+    documentNumber: 'CA12345AB',
+    role: 'single',
+  };
+
+  it('writes the comune codice catastale at cols 106-114 for italian guests', () => {
+    const line = buildAlloggiatiLine(italianGuest);
+    // Cols 106-114 = chars [105:114] (0-indexed)
+    expect(line.slice(105, 114).trim()).toBe('H501');
+  });
+
+  it('reports a warning when comune is not in the table', () => {
+    const result = buildAlloggiatiFileWithWarnings([
+      { ...italianGuest, birthPlace: 'Frazioncina_di_Sotto' },
+    ]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatchObject({ guestIndex: 0, field: 'birthPlace' });
+  });
+
+  it('reports a warning when birthPlace is missing for an italian guest', () => {
+    const result = buildAlloggiatiFileWithWarnings([
+      { ...italianGuest, birthPlace: undefined },
+    ]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]?.reason).toMatch(/Comune di nascita mancante/);
+  });
+
+  it('does NOT report a warning for foreign guests (comune not required)', () => {
+    const result = buildAlloggiatiFileWithWarnings([sampleGuest]);
+    expect(result.warnings).toHaveLength(0);
   });
 });

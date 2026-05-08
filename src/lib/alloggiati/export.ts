@@ -47,6 +47,7 @@ import {
   type CountryInfo,
   lookupByCode3,
 } from '../ocr/countries';
+import { lookupComune } from './comuni';
 
 export interface AlloggiatiGuest {
   arrivalDate: string; // YYYY-MM-DD
@@ -55,7 +56,10 @@ export interface AlloggiatiGuest {
   givenNames: string;
   sex: 'M' | 'F' | 'X';
   birthDate: string; // YYYY-MM-DD
-  birthPlace?: string; // descrizione testuale (per la tabella comuni: TBD MVP)
+  /** Comune di nascita testuale (es. "Roma"). Per ospiti italiani serve a
+   *  ricavare il codice catastale ("H501"). Per ospiti stranieri viene
+   *  ignorato (il portale richiede solo lo stato di nascita). */
+  birthPlace?: string;
   birthCountryCode3: string; // ISO 3
   citizenshipCode3: string; // ISO 3
   documentType: 'PASSPORT' | 'ID_CARD' | 'DRIVING_LICENSE' | 'RESIDENCE_PERMIT' | 'OTHER';
@@ -63,6 +67,14 @@ export interface AlloggiatiGuest {
   documentIssuingCountryCode3?: string; // ISO 3
   /** Se è il primo del nucleo, indicato esplicitamente; altrimenti single. */
   role: 'single' | 'family_head' | 'family_member' | 'group_head' | 'group_member';
+}
+
+export interface AlloggiatiBuildResult {
+  /** Contenuto file pronto per latin1 encoding e upload. */
+  content: string;
+  /** Warning per riga (1-indexed). L'host deve correggere il file a mano
+   *  prima dell'upload se sono presenti. */
+  warnings: Array<{ guestIndex: number; field: string; reason: string }>;
 }
 
 const ALLOGGIATI_DOC_TYPES: Record<AlloggiatiGuest['documentType'], string> = {
@@ -111,8 +123,13 @@ function normaliseName(s: string): string {
     .trim();
 }
 
+interface BuildLineOutput {
+  line: string;
+  warnings: Array<{ field: string; reason: string }>;
+}
+
 /**
- * Build a single fixed-width record. Returns 168-char string.
+ * Build a single fixed-width record. Returns 168-char string + warnings.
  *
  * Layout (1-indexed col offsets):
  *  1  -2   tipo alloggiato (2 char)
@@ -122,7 +139,7 @@ function normaliseName(s: string): string {
  *  65 -94  nome (30 char)
  *  95      sesso (1 char)
  *  96 -105 data nascita GG/MM/AAAA (10 char)
- *  106-114 codice comune nascita (9 char) — opzionale, lasciato spazi
+ *  106-114 codice comune nascita (9 char) — solo per ospiti italiani
  *  115-123 codice stato nascita (9 char)
  *  124-132 codice cittadinanza (9 char)
  *  133-137 tipo documento (5 char)
@@ -130,7 +147,25 @@ function normaliseName(s: string): string {
  *  158-166 codice stato rilascio documento (9 char)
  *  Padding finale a 168 char con spazi.
  */
-export function buildAlloggiatiLine(g: AlloggiatiGuest): string {
+function buildAlloggiatiLineInternal(g: AlloggiatiGuest): BuildLineOutput {
+  const warnings: Array<{ field: string; reason: string }> = [];
+  const isItalian = g.birthCountryCode3.toUpperCase() === 'ITA';
+
+  let comuneCode = '';
+  if (isItalian) {
+    const found = lookupComune(g.birthPlace);
+    if (found) {
+      comuneCode = found.codice;
+    } else {
+      warnings.push({
+        field: 'birthPlace',
+        reason: g.birthPlace
+          ? `Comune "${g.birthPlace}" non in tabella codici catastali. Correggi il file manualmente prima dell'upload (campo cols 106-114).`
+          : `Comune di nascita mancante per ospite italiano. Aggiungilo manualmente nel file (campo cols 106-114) o nei dati dell'ospite.`,
+      });
+    }
+  }
+
   const parts: string[] = [];
   parts.push(ROLE_CODES[g.role]);                                 // 1-2
   parts.push(fmtDate(g.arrivalDate));                             // 3-12
@@ -139,7 +174,7 @@ export function buildAlloggiatiLine(g: AlloggiatiGuest): string {
   parts.push(padFixed(normaliseName(g.givenNames), 30));          // 65-94
   parts.push(g.sex === 'F' ? 'F' : g.sex === 'X' ? 'M' : 'M');    // 95
   parts.push(fmtDate(g.birthDate));                               // 96-105
-  parts.push(padFixed('', 9));                                    // 106-114 codice comune nascita (TODO tabella comuni)
+  parts.push(padFixed(comuneCode, 9));                            // 106-114
   parts.push(alloggiatiCountryCode(g.birthCountryCode3));         // 115-123
   parts.push(alloggiatiCountryCode(g.citizenshipCode3));          // 124-132
   parts.push(padFixed(ALLOGGIATI_DOC_TYPES[g.documentType], 5));  // 133-137
@@ -151,18 +186,33 @@ export function buildAlloggiatiLine(g: AlloggiatiGuest): string {
   );                                                              // 158-166
   parts.push('  ');                                               // 167-168 padding finale
 
-  const line = parts.join('');
+  let line = parts.join('');
   if (line.length !== 168) {
-    // Pad/trim to exact width — il portale rifiuta righe non conformi.
-    return line.length > 168 ? line.slice(0, 168) : line + ' '.repeat(168 - line.length);
+    line = line.length > 168 ? line.slice(0, 168) : line + ' '.repeat(168 - line.length);
   }
-  return line;
+  return { line, warnings };
 }
 
-/** Build the full Alloggiati Web file content (multi-guest). */
+/** Backwards-compatible: ritorna solo la riga, senza warning. Per i test. */
+export function buildAlloggiatiLine(g: AlloggiatiGuest): string {
+  return buildAlloggiatiLineInternal(g).line;
+}
+
+/** Build full file con warnings strutturati (chiamare da route handler). */
+export function buildAlloggiatiFileWithWarnings(guests: AlloggiatiGuest[]): AlloggiatiBuildResult {
+  const lines: string[] = [];
+  const warnings: AlloggiatiBuildResult['warnings'] = [];
+  guests.forEach((g, idx) => {
+    const out = buildAlloggiatiLineInternal(g);
+    lines.push(out.line);
+    out.warnings.forEach((w) => warnings.push({ guestIndex: idx, ...w }));
+  });
+  return { content: lines.join('\r\n') + '\r\n', warnings };
+}
+
+/** Backwards-compatible: ritorna solo il content. */
 export function buildAlloggiatiFile(guests: AlloggiatiGuest[]): string {
-  // Polizia portal accepts CRLF line endings.
-  return guests.map(buildAlloggiatiLine).join('\r\n') + '\r\n';
+  return buildAlloggiatiFileWithWarnings(guests).content;
 }
 
 /** Build a human-readable CSV preview, also useful for debugging. */
@@ -175,6 +225,8 @@ export function buildAlloggiatiCsv(guests: AlloggiatiGuest[]): string {
     'nome',
     'sesso',
     'nascita',
+    'comuneNascita',
+    'codiceCatastale',
     'paeseNascita',
     'cittadinanza',
     'tipoDocumento',
@@ -182,6 +234,8 @@ export function buildAlloggiatiCsv(guests: AlloggiatiGuest[]): string {
     'paeseRilascio',
   ].join(',');
   const rows = guests.map((g) => {
+    const isItalian = g.birthCountryCode3.toUpperCase() === 'ITA';
+    const comune = isItalian ? lookupComune(g.birthPlace) : undefined;
     const csvFields = [
       ROLE_CODES[g.role],
       fmtDate(g.arrivalDate),
@@ -190,6 +244,8 @@ export function buildAlloggiatiCsv(guests: AlloggiatiGuest[]): string {
       normaliseName(g.givenNames),
       g.sex,
       fmtDate(g.birthDate),
+      isItalian ? (g.birthPlace ?? '') : '',
+      comune?.codice ?? '',
       italianCountryName(g.birthCountryCode3),
       italianCountryName(g.citizenshipCode3),
       ALLOGGIATI_DOC_TYPES[g.documentType],

@@ -65,13 +65,22 @@ async function createPropertyAction(formData: FormData) {
   redirect('/properties');
 }
 
-export default function NewPropertyPage() {
+export default async function NewPropertyPage(props: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const sp = await props.searchParams;
+  const errorMessage = sp.error === 'invalid' ? 'Controlla i campi obbligatori (nome, indirizzo, città, provincia, CAP).' : null;
   return (
     <div className="space-y-6">
       <div>
         <Link href="/properties" className="text-sm text-ink/60 hover:text-ink">← Appartamenti</Link>
         <h1 className="mt-2 font-display text-3xl font-bold">Nuovo appartamento</h1>
       </div>
+      {errorMessage && (
+        <div className="max-w-2xl rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {errorMessage}
+        </div>
+      )}
       <form action={createPropertyAction} className="citofono-card max-w-2xl space-y-5 p-6">
         <Field name="name" label="Nome (uso interno)" placeholder="Casa al mare Sperlonga" required />
         <Field name="address" label="Indirizzo" placeholder="Via Roma 1" required />

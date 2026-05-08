@@ -20,5 +20,7 @@ export async function loadGuestSession(token: string): Promise<GuestSession | nu
   });
   if (!booking) return null;
   if (booking.checkInTokenExp < new Date()) return null;
+  if (booking.status === 'CANCELLED') return null;
+  if (booking.property.archivedAt) return null;
   return { booking, property: booking.property };
 }

@@ -24,11 +24,6 @@ const PasswordSchema = z.object({
 
 const AlloggiatiSchema = z.object({
   alloggiatiUser: z.string().max(80).optional().or(z.literal('')),
-  // La password viene salvata come hash in DB (mai in plain).
-  // In produzione si userà una vera cifratura simmetrica con CITOFONO_SECRET_KEY
-  // così possiamo poi rileggerla per fare login al portale Alloggiati per conto host.
-  // Per la v0.4 salviamo l'hash come placeholder verificabile.
-  alloggiatiPassword: z.string().max(200).optional().or(z.literal('')),
 });
 
 async function changePassword(formData: FormData) {
@@ -64,14 +59,10 @@ async function saveAlloggiati(formData: FormData) {
   if (!user) redirect('/login');
   const parsed = AlloggiatiSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) redirect('/settings?error=invalid');
-  const { alloggiatiUser, alloggiatiPassword } = parsed.data;
-  const update: { alloggiatiUser?: string | null; alloggiatiHashed?: string | null } = {
-    alloggiatiUser: alloggiatiUser || null,
-  };
-  if (alloggiatiPassword) {
-    update.alloggiatiHashed = await hashPassword(alloggiatiPassword);
-  }
-  await prisma.host.update({ where: { id: user.id }, data: update });
+  await prisma.host.update({
+    where: { id: user.id },
+    data: { alloggiatiUser: parsed.data.alloggiatiUser || null },
+  });
   await audit({ event: 'host.alloggiati_updated', hostId: user.id });
   revalidatePath('/settings');
   redirect('/settings?ok=alloggiati');
@@ -203,16 +194,14 @@ export default async function SettingsPage(props: {
       <section className="citofono-card p-6">
         <h2 className="font-display text-xl font-bold">Alloggiati Web</h2>
         <p className="mt-1 text-sm text-ink/60">
-          Le tue credenziali del portale Polizia di Stato. Servono solo se vuoi caricare
-          la schedina automaticamente. Le memorizziamo crittografate; non le leggiamo
-          mai in chiaro.
-        </p>
-        <p className="mt-2 text-xs text-ink/50">
-          Stato attuale: {host.alloggiatiUser ? `${host.alloggiatiUser} (configurato)` : 'non configurato'}
+          Salva qui il tuo username del portale Polizia di Stato come riferimento.
+          La password NON viene memorizzata: per ora il caricamento della schedina
+          è manuale (scarichi il file .txt e lo carichi sul portale). L'invio
+          automatico sarà disponibile in una prossima versione.
         </p>
         <form action={saveAlloggiati} className="mt-4 grid gap-3 md:grid-cols-2">
-          <div>
-            <label htmlFor="alloggiatiUser" className="citofono-label">Utente Alloggiati</label>
+          <div className="md:col-span-2">
+            <label htmlFor="alloggiatiUser" className="citofono-label">Username Alloggiati</label>
             <input
               id="alloggiatiUser"
               name="alloggiatiUser"
@@ -220,20 +209,11 @@ export default async function SettingsPage(props: {
               defaultValue={host.alloggiatiUser ?? ''}
               autoComplete="off"
               className="citofono-input mt-1"
-            />
-          </div>
-          <div>
-            <label htmlFor="alloggiatiPassword" className="citofono-label">Password (lascia vuoto per non cambiarla)</label>
-            <input
-              id="alloggiatiPassword"
-              name="alloggiatiPassword"
-              type="password"
-              autoComplete="off"
-              className="citofono-input mt-1"
+              placeholder="es. ABC123"
             />
           </div>
           <div className="md:col-span-2">
-            <button type="submit" className="citofono-btn-secondary">Salva credenziali</button>
+            <button type="submit" className="citofono-btn-secondary">Salva username</button>
           </div>
         </form>
       </section>

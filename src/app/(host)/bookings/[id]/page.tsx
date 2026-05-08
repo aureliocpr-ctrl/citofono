@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { audit } from '@/lib/audit';
 import { CopyButton } from '@/components/CopyButton';
 import { SendLinkButton } from './SendLinkButton';
+import { lookupComune } from '@/lib/alloggiati/comuni';
 
 async function cancelBooking(formData: FormData) {
   'use server';
@@ -90,6 +91,25 @@ export default async function BookingDetailPage(props: {
     (g) => g.verified || g.livenessPassed || g.flaggedForReview,
   );
 
+  // Pre-flight Alloggiati: per ospiti italiani senza comune nel codice catastale
+  // l'host dovrà correggere il file a mano. Lo segnaliamo PRIMA del download.
+  const alloggiatiWarnings: Array<{ guestName: string; reason: string }> = [];
+  if (allVerified) {
+    for (const g of booking.guests) {
+      const isItalian = (g.birthCountry ?? '').toUpperCase() === 'ITA';
+      if (!isItalian) continue;
+      const found = lookupComune(g.birthPlace);
+      if (!found) {
+        alloggiatiWarnings.push({
+          guestName: `${g.firstName ?? ''} ${g.lastName ?? ''}`.trim() || 'Ospite',
+          reason: g.birthPlace
+            ? `comune di nascita "${g.birthPlace}" non in tabella codici catastali`
+            : `comune di nascita non rilevato dal documento`,
+        });
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -169,6 +189,32 @@ export default async function BookingDetailPage(props: {
           <p className="mt-1 text-sm text-ink/60">
             Tutti gli ospiti sono verificati. Scarica il file e caricalo sul portale della Polizia.
           </p>
+          {alloggiatiWarnings.length > 0 && (
+            <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-semibold">Attenzione — il file potrebbe richiedere modifiche manuali:</p>
+              <ul className="mt-2 list-disc pl-5 space-y-1">
+                {alloggiatiWarnings.map((w, i) => (
+                  <li key={i}>
+                    <strong>{w.guestName}</strong>: {w.reason}.
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs">
+                Il portale Alloggiati Web richiede il codice catastale del comune di nascita
+                (4 lettere/numeri, es. <code>H501</code> per Roma) nelle colonne 106-114 del
+                file .txt. Se il comune non è in tabella, apri il file con un editor di testo,
+                cerca la riga dell'ospite e inserisci il codice. Lista codici:{' '}
+                <a
+                  href="https://www.istat.it/it/archivio/codici-dei-comuni-italiani"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline"
+                >
+                  ISTAT
+                </a>.
+              </p>
+            </div>
+          )}
           <div className="mt-4 flex flex-wrap gap-3">
             <a
               href={`/api/bookings/${booking.id}/alloggiati.txt`}

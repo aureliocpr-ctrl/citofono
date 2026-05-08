@@ -56,11 +56,15 @@ export async function runGdprCleanup(
     });
     result.embeddingsDeleted = expiredEmbeddings.length;
     for (const e of expiredEmbeddings) {
-      await audit({
-        event: 'data.cleanup',
-        guestId: e.guestId,
-        details: { kind: 'face_embedding' },
-      }).catch(() => {});
+      try {
+        await audit({
+          event: 'data.cleanup',
+          guestId: e.guestId,
+          details: { kind: 'face_embedding' },
+        });
+      } catch (err) {
+        result.errors.push(`audit(embedding ${e.id}): ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 
@@ -84,11 +88,15 @@ export async function runGdprCleanup(
         data: { deletedAt: new Date() },
       });
       result.documentsDeleted++;
-      await audit({
-        event: 'data.cleanup',
-        guestId: doc.guestId,
-        details: { kind: 'document', s3Key: doc.s3Key },
-      }).catch(() => {});
+      try {
+        await audit({
+          event: 'data.cleanup',
+          guestId: doc.guestId,
+          details: { kind: 'document', s3Key: doc.s3Key },
+        });
+      } catch (err) {
+        result.errors.push(`audit(document ${doc.id}): ${err instanceof Error ? err.message : String(err)}`);
+      }
     } catch (err) {
       result.errors.push(err instanceof Error ? err.message : String(err));
     }

@@ -37,6 +37,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     givenNames: g.firstName ?? '',
     sex: (g.sex ?? 'M') as 'M' | 'F' | 'X',
     birthDate: g.birthDate?.toISOString().slice(0, 10) ?? '',
+    birthPlace: g.birthPlace ?? undefined,
     birthCountryCode3: g.birthCountry ?? 'ITA',
     citizenshipCode3: g.nationality ?? 'ITA',
     documentType: (g.docType as AlloggiatiGuest['documentType']) ?? 'ID_CARD',

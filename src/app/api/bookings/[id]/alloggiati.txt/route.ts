@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server';
 import { validateRequest } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { audit, ipAndUaFromHeaders } from '@/lib/audit';
-import { buildAlloggiatiFile, type AlloggiatiGuest } from '@/lib/alloggiati/export';
+import { buildAlloggiatiFileWithWarnings, type AlloggiatiGuest } from '@/lib/alloggiati/export';
 
 export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { user } = await validateRequest();
@@ -43,6 +43,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     givenNames: g.firstName ?? '',
     sex: (g.sex ?? 'M') as 'M' | 'F' | 'X',
     birthDate: g.birthDate?.toISOString().slice(0, 10) ?? '',
+    birthPlace: g.birthPlace ?? undefined,
     birthCountryCode3: g.birthCountry ?? 'ITA',
     citizenshipCode3: g.nationality ?? 'ITA',
     documentType:
@@ -52,9 +53,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     role: !isFamily ? 'single' : idx === 0 ? 'family_head' : 'family_member',
   }));
 
-  const file = buildAlloggiatiFile(exportRows);
+  const { content: file, warnings } = buildAlloggiatiFileWithWarnings(exportRows);
 
-  // Cache the generated CSV on the CheckIn record for traceability.
   await prisma.checkIn.update({
     where: { bookingId: booking.id },
     data: { alloggiatiCsv: file },
@@ -64,17 +64,19 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     event: 'alloggiati.exported',
     hostId: user.id,
     bookingId: booking.id,
-    details: { numGuests: verifiedGuests.length, format: 'txt' },
+    details: { numGuests: verifiedGuests.length, format: 'txt', warnings: warnings.length },
     ...ipAndUaFromHeaders(req.headers),
   });
 
-  // ISO-8859-1 encoding required by the Italian Police portal
   const buf = Buffer.from(file, 'latin1');
-  return new NextResponse(buf, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/plain; charset=ISO-8859-1',
-      'Content-Disposition': `attachment; filename="alloggiati_${booking.id}.txt"`,
-    },
-  });
+  const headers: Record<string, string> = {
+    'Content-Type': 'text/plain; charset=ISO-8859-1',
+    'Content-Disposition': `attachment; filename="alloggiati_${booking.id}.txt"`,
+  };
+  if (warnings.length > 0) {
+    // L'header è solo informativo per debug. La UI legge i warning dal DB
+    // (alloggiatiCsv + futuro campo dedicato). Per ora basta loggare.
+    headers['X-Alloggiati-Warnings'] = String(warnings.length);
+  }
+  return new NextResponse(buf, { status: 200, headers });
 }

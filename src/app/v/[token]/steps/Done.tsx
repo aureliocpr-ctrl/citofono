@@ -7,12 +7,34 @@ interface Props {
   verdict: 'match' | 'review' | 'reject';
   checkInTime: string;
   propertyName: string;
+  guestNumber?: number;
+  totalGuests?: number;
+  verifiedCount?: number;
+  /** Quando definito, sul match mostra anche il bottone "Continua col prossimo ospite". */
+  onContinueNext?: () => void;
 }
 
-export function Done({ verdict, checkInTime, propertyName }: Props) {
+export function Done({
+  verdict,
+  checkInTime,
+  propertyName,
+  guestNumber,
+  totalGuests,
+  verifiedCount,
+  onContinueNext,
+}: Props) {
   return (
     <div className="guest-step">
-      {verdict === 'match' && <Success checkInTime={checkInTime} propertyName={propertyName} />}
+      {verdict === 'match' && (
+        <Success
+          checkInTime={checkInTime}
+          propertyName={propertyName}
+          guestNumber={guestNumber}
+          totalGuests={totalGuests}
+          verifiedCount={verifiedCount}
+          onContinueNext={onContinueNext}
+        />
+      )}
       {verdict === 'review' && <ReviewPending propertyName={propertyName} />}
       {verdict === 'reject' && <Rejected />}
       <Concierge propertyName={propertyName} />
@@ -20,7 +42,25 @@ export function Done({ verdict, checkInTime, propertyName }: Props) {
   );
 }
 
-function Success({ checkInTime, propertyName }: { checkInTime: string; propertyName: string }) {
+function Success({
+  checkInTime,
+  propertyName,
+  guestNumber,
+  totalGuests,
+  verifiedCount,
+  onContinueNext,
+}: {
+  checkInTime: string;
+  propertyName: string;
+  guestNumber?: number;
+  totalGuests?: number;
+  verifiedCount?: number;
+  onContinueNext?: () => void;
+}) {
+  const showProgress =
+    typeof totalGuests === 'number' && totalGuests > 1 && typeof verifiedCount === 'number';
+  const remaining = showProgress ? Math.max(0, totalGuests! - (verifiedCount ?? 0)) : 0;
+
   return (
     <>
       <div className="grid place-items-center">
@@ -28,10 +68,33 @@ function Success({ checkInTime, propertyName }: { checkInTime: string; propertyN
           ✓
         </div>
       </div>
-      <h1 className="mt-6 text-center font-display text-3xl font-bold">Tutto pronto!</h1>
-      <p className="mt-3 text-center text-white/70">
-        L'identità è verificata. Ti aspettiamo a {propertyName} dalle <strong>{checkInTime}</strong>.
-      </p>
+      <h1 className="mt-6 text-center font-display text-3xl font-bold">
+        {showProgress ? `Ospite ${guestNumber} verificato!` : 'Tutto pronto!'}
+      </h1>
+      {showProgress && remaining > 0 ? (
+        <>
+          <p className="mt-3 text-center text-white/70">
+            {verifiedCount} di {totalGuests} ospiti verificati. Mancano ancora{' '}
+            {remaining === 1 ? '1 ospite' : `${remaining} ospiti`}.
+          </p>
+          {onContinueNext && (
+            <button
+              onClick={onContinueNext}
+              className="guest-btn-primary mt-6 w-full"
+            >
+              Continua con il prossimo ospite →
+            </button>
+          )}
+          <p className="mt-3 text-center text-xs text-white/50">
+            Passa il telefono al prossimo ospite della prenotazione.
+          </p>
+        </>
+      ) : (
+        <p className="mt-3 text-center text-white/70">
+          L'identità è verificata. Ti aspettiamo a {propertyName} dalle{' '}
+          <strong>{checkInTime}</strong>.
+        </p>
+      )}
     </>
   );
 }

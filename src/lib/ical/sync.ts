@@ -29,8 +29,11 @@ export function parseIcal(icsText: string, sourceHint?: string): IcalEvent[] {
   let jcal: unknown;
   try {
     jcal = ICAL.parse(icsText);
-  } catch {
-    return [];
+  } catch (err) {
+    // Lascia esplodere — il chiamante (runner) lo intercetta e mette nei result.errors
+    // così l'host vede quale URL iCal è rotto invece di non sincronizzare
+    // silenziosamente.
+    throw new Error(`ICS parse failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   const comp = new ICAL.Component(jcal as Array<unknown>);
   const events = comp.getAllSubcomponents('vevent');

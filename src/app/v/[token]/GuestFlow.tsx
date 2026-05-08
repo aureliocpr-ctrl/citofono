@@ -71,9 +71,19 @@ interface Props {
 export function GuestFlow(props: Props) {
   const [step, setStep] = useState<Step>('welcome');
   const [state, setState] = useState<GuestFlowState>({});
+  /** Quale ospite stiamo verificando: 1, 2, 3, ... fino a numGuests. */
+  const [currentGuestIndex, setCurrentGuestIndex] = useState(1);
+  /** Quanti ospiti hanno già completato il check-in con verdetto match. */
+  const [verifiedCount, setVerifiedCount] = useState(0);
 
   function patch(p: Partial<GuestFlowState>) {
     setState((s) => ({ ...s, ...p }));
+  }
+
+  function startNextGuest() {
+    setState({});
+    setCurrentGuestIndex((i) => i + 1);
+    setStep('consent');
   }
 
   return (
@@ -142,6 +152,9 @@ export function GuestFlow(props: Props) {
           livenessChallenge={state.livenessChallenge ?? ''}
           onResolved={(verdict, similarity) => {
             patch({ matchVerdict: verdict, similarity });
+            if (verdict === 'match') {
+              setVerifiedCount((c) => c + 1);
+            }
             setStep('done');
           }}
         />
@@ -151,6 +164,14 @@ export function GuestFlow(props: Props) {
           verdict={state.matchVerdict ?? 'review'}
           checkInTime={props.checkInTime}
           propertyName={props.propertyName}
+          guestNumber={currentGuestIndex}
+          totalGuests={props.numGuests}
+          verifiedCount={verifiedCount}
+          onContinueNext={
+            verifiedCount < props.numGuests && state.matchVerdict === 'match'
+              ? startNextGuest
+              : undefined
+          }
         />
       )}
     </>

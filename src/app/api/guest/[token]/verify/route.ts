@@ -26,6 +26,7 @@ import { matchEmbeddings, encodeEmbedding } from '@/lib/face/match';
 import { audit, ipAndUaFromHeaders } from '@/lib/audit';
 import { sendHostGuestVerified, sendHostCheckInReview } from '@/lib/email';
 import { enforce, RL } from '@/lib/rateLimit';
+import { log } from '@/lib/logger';
 
 const Schema = z.object({
   guestId: z.string().min(1),
@@ -141,15 +142,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
       if (property?.host) {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
         const guestName = `${guest.firstName ?? ''} ${guest.lastName ?? ''}`.trim() || sess.booking.leadName;
-        await sendHostGuestVerified({
+        const emailResult = await sendHostGuestVerified({
           to: property.host.email,
           hostName: property.host.fullName,
           propertyName: property.name,
           guestName,
           bookingLink: `${appUrl}/bookings/${sess.booking.id}`,
-        }).catch(() => {
-          // logged via audit later if needed
         });
+        if (!emailResult.ok) {
+          log.warn('email.host_verified_failed', {
+            hostId: property.host.id,
+            bookingId: sess.booking.id,
+            error: emailResult.error,
+          });
+        }
       }
     }
   } else if (result.verdict === 'review') {
@@ -164,13 +170,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     if (property?.host) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
       const guestName = `${guest.firstName ?? ''} ${guest.lastName ?? ''}`.trim() || sess.booking.leadName;
-      await sendHostCheckInReview({
+      const emailResult = await sendHostCheckInReview({
         to: property.host.email,
         hostName: property.host.fullName,
         propertyName: property.name,
         guestName,
         reviewLink: `${appUrl}/bookings/${sess.booking.id}`,
-      }).catch(() => {});
+      });
+      if (!emailResult.ok) {
+        log.warn('email.host_review_failed', {
+          hostId: property.host.id,
+          bookingId: sess.booking.id,
+          error: emailResult.error,
+        });
+      }
     }
   }
 

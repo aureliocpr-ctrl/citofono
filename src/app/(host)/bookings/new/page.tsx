@@ -4,23 +4,32 @@ import { z } from 'zod';
 import { validateRequest } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
-const BookingSchema = z.object({
-  propertyId: z.string().min(1),
-  leadName: z.string().min(2).max(120),
-  leadEmail: z.string().email().optional().or(z.literal('')),
-  leadPhone: z.string().max(40).optional().or(z.literal('')),
-  checkInDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  checkOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  numGuests: z.coerce.number().int().min(1).max(20),
-  externalRef: z.string().max(80).optional().or(z.literal('')),
-});
+const BookingSchema = z
+  .object({
+    propertyId: z.string().min(1),
+    leadName: z.string().min(2).max(120),
+    leadEmail: z.string().email().optional().or(z.literal('')),
+    leadPhone: z.string().max(40).optional().or(z.literal('')),
+    checkInDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    checkOutDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    numGuests: z.coerce.number().int().min(1).max(20),
+    externalRef: z.string().max(80).optional().or(z.literal('')),
+  })
+  .refine((d) => new Date(d.checkOutDate) > new Date(d.checkInDate), {
+    message: 'checkout_before_checkin',
+    path: ['checkOutDate'],
+  });
 
 async function createBookingAction(formData: FormData) {
   'use server';
   const { user } = await validateRequest();
   if (!user) redirect('/login');
   const parsed = BookingSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) redirect('/bookings/new?error=invalid');
+  if (!parsed.success) {
+    const firstIssue = parsed.error.issues[0];
+    const code = firstIssue?.message === 'checkout_before_checkin' ? 'dates' : 'invalid';
+    redirect(`/bookings/new?error=${code}`);
+  }
 
   const property = await prisma.property.findFirst({
     where: { id: parsed.data.propertyId, hostId: user.id },
@@ -47,9 +56,19 @@ async function createBookingAction(formData: FormData) {
   redirect(`/bookings/${booking.id}`);
 }
 
-export default async function NewBookingPage() {
+const errorMessages: Record<string, string> = {
+  invalid: 'Controlla i campi: c\'è un valore non valido.',
+  property: 'Appartamento non trovato.',
+  dates: 'La data di check-out deve essere successiva al check-in.',
+};
+
+export default async function NewBookingPage(props: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const { user } = await validateRequest();
   if (!user) return null;
+  const sp = await props.searchParams;
+  const errorMessage = sp.error ? errorMessages[sp.error] ?? 'Errore.' : null;
   const properties = await prisma.property.findMany({
     where: { hostId: user.id, archivedAt: null },
     orderBy: { createdAt: 'asc' },
@@ -75,6 +94,11 @@ export default async function NewBookingPage() {
         <Link href="/bookings" className="text-sm text-ink/60 hover:text-ink">← Prenotazioni</Link>
         <h1 className="mt-2 font-display text-3xl font-bold">Nuova prenotazione</h1>
       </div>
+      {errorMessage && (
+        <div className="max-w-2xl rounded-md border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700">
+          {errorMessage}
+        </div>
+      )}
       <form action={createBookingAction} className="citofono-card max-w-2xl space-y-5 p-6">
         <div>
           <label htmlFor="propertyId" className="citofono-label">Appartamento</label>
