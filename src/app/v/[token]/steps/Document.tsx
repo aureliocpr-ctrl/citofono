@@ -36,8 +36,57 @@ export function DocumentStep({ token, guestId, onNext }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handleSelect(f: File) {
+    // Vercel ha un limite ~4.5MB sul body delle route handler. Foto da
+    // smartphone moderno sono 3-6 MB. Downscale lazy se serve.
+    setError(null);
+    if (f.size > 4.5 * 1024 * 1024) {
+      void downscale(f, 1600).then((smaller) => {
+        setFile(smaller);
+        setPreviewUrl(URL.createObjectURL(smaller));
+      }).catch((e) => {
+        // Se il downscale fallisce, usa il file originale e lascia che sia
+        // il server a rigettare con messaggio chiaro.
+        console.warn('downscale failed:', e);
+        setFile(f);
+        setPreviewUrl(URL.createObjectURL(f));
+      });
+      return;
+    }
     setFile(f);
     setPreviewUrl(URL.createObjectURL(f));
+  }
+
+  /** Riduce la foto a max `maxDim` px sul lato lungo, encode JPEG quality 0.85. */
+  async function downscale(file: File, maxDim: number): Promise<File> {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('image_load_failed'));
+      i.src = dataUrl;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas_unsupported');
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('blob_null'))),
+        'image/jpeg',
+        0.85,
+      );
+    });
+    return new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
   }
 
   async function handleSubmit() {

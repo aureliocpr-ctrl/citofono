@@ -63,18 +63,21 @@ interface Props {
   propertyCity: string;
   leadName: string;
   numGuests: number;
+  /** Ospiti già verificati prima di questa sessione (parten da DB, non React state). */
+  alreadyVerified?: number;
   checkInDate: string;
   checkOutDate: string;
   checkInTime: string;
 }
 
 export function GuestFlow(props: Props) {
+  const startingVerified = props.alreadyVerified ?? 0;
   const [step, setStep] = useState<Step>('welcome');
   const [state, setState] = useState<GuestFlowState>({});
-  /** Quale ospite stiamo verificando: 1, 2, 3, ... fino a numGuests. */
-  const [currentGuestIndex, setCurrentGuestIndex] = useState(1);
-  /** Quanti ospiti hanno già completato il check-in con verdetto match. */
-  const [verifiedCount, setVerifiedCount] = useState(0);
+  /** Quale ospite stiamo verificando: 1-indexed, parte dal prossimo non ancora verificato. */
+  const [currentGuestIndex, setCurrentGuestIndex] = useState(startingVerified + 1);
+  /** Quanti ospiti hanno completato (somma sessione + DB). */
+  const [verifiedCount, setVerifiedCount] = useState(startingVerified);
 
   function patch(p: Partial<GuestFlowState>) {
     setState((s) => ({ ...s, ...p }));

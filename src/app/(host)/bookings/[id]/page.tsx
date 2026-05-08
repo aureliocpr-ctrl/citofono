@@ -93,18 +93,23 @@ export default async function BookingDetailPage(props: {
 
   // Pre-flight Alloggiati: per ospiti italiani senza comune nel codice catastale
   // l'host dovrà correggere il file a mano. Lo segnaliamo PRIMA del download.
+  // Stessa logica della route handler: se birthCountry è null, default = 'ITA'.
   const alloggiatiWarnings: Array<{ guestName: string; reason: string }> = [];
   if (allVerified) {
     for (const g of booking.guests) {
-      const isItalian = (g.birthCountry ?? '').toUpperCase() === 'ITA';
-      if (!isItalian) continue;
+      const country = (g.birthCountry ?? 'ITA').toUpperCase();
+      if (country !== 'ITA') continue;
       const found = lookupComune(g.birthPlace);
       if (!found) {
+        const guestName =
+          `${g.firstName ?? ''} ${g.lastName ?? ''}`.trim() || 'Ospite';
         alloggiatiWarnings.push({
-          guestName: `${g.firstName ?? ''} ${g.lastName ?? ''}`.trim() || 'Ospite',
+          guestName,
           reason: g.birthPlace
             ? `comune di nascita "${g.birthPlace}" non in tabella codici catastali`
-            : `comune di nascita non rilevato dal documento`,
+            : !g.birthCountry
+              ? 'paese di nascita non rilevato dal documento (presumiamo ITALIA)'
+              : 'comune di nascita non rilevato dal documento',
         });
       }
     }
